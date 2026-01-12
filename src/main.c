@@ -4,7 +4,7 @@
 int main() {
     
     //Esboço:
-    // char* buffer[5] ?;
+    // char* buffer[5] ? - - linhas de comando;
     //obs : arquivo executavel + maximo de argumentos 3 
     // loop para leitura - apenas validar comandos e enfileirar no buffer (buffer cheio ignorar)
         //comandos internos (comandos separados por linhas) - cd, wait, exit
@@ -21,4 +21,5 @@ int main() {
 
 
     return 0;
+
 }
