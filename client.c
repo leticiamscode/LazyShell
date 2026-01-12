@@ -4,6 +4,7 @@
 #include <signal.h>
 
 // constantes
+#define MAX_LINHA 1000
 #define MAX_BUFFER 5
 
 
@@ -15,8 +16,9 @@ void trataSigchld(int signum);
 
 
 
-int tamBuffer=0, numFilhosVivos=0,
-    resistir=1, encerrar=0;
+char linhaLsh[7] = "\nlsh> ";
+int  tamBuffer=0, numFilhosVivos=0,
+     resistir=1, encerrar=0;
 
 int main() {
     // Configura mascaras para SIGINT e SIGCHLD
@@ -28,24 +30,30 @@ int main() {
 
     // Configura tratadores para SIGINT e SIGCHLD
     // Cada tratador deve bloquear o sinal complementar
-    struct sigaction saSigint = {&trataSigint, maskSigchld, NULL},
-                     saSigchld = {&trataSigchld, maskSigchld, NULL};
+    struct sigaction saSigint = {&trataSigint, maskSigchld, 0},
+                     saSigchld = {&trataSigchld, maskSigchld, 0};
     sigaction(SIGINT, &saSigint, NULL);
     sigaction(SIGCHLD, &saSigchld, NULL);
 
     
+    char buff[MAX_LINHA];
+
     while (1) {
         // Assinatura da lazy shell
-        printf("lsh> ");
+        printf("%s", linhaLsh);
 
 
         // Tenta ler da entrada
+        fgets(buff, MAX_LINHA, stdin);
 
 
         // Verificacoes de encerramento
         if (resistir == 0) {
-            sigsuspend(&maskSigint); // SIGCHLD nao pode interromper
+            // SIGCHLD nao pode interromper resistencia
+            sigprocmask(SIG_BLOCK, &maskSigint, NULL);
+            sleep(3);
             resistir = 1;
+            sigprocmask(SIG_UNBLOCK, &maskSigint, NULL);
         }
 
         if (encerrar == 1)
@@ -70,11 +78,11 @@ int main() {
 void trataSigint(int signum) {
     if (tamBuffer == 0) {
         if ((numFilhosVivos > 0) && (resistir == 1)) {
-            printf("Não posso morrer... sou lenta mas sou mãe de família!!!\nlsh> ");
+            printf("%sNão posso morrer... sou lenta mas sou mãe de família!!!%s", linhaLsh, linhaLsh);
             resistir = 0;
         }
         else {
-            printf("Ok... você venceu! Adeus!");
+            printf("%sOk... você venceu! Adeus!", linhaLsh);
             encerrar = 1;
         }
     }
