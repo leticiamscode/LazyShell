@@ -25,6 +25,10 @@ int  tamBuffer=0, numFilhosVivos=0,
      executar=0, resistir=1, encerrar=0;
 
 
+// Muda o GPID de todos os filhos pra esse, que será o GPID do
+// primeiro filho criado, garantindo que não será usado novamente
+int PGIDfilhos = -1;
+
 int main() {
     // Configura mascara para bloquear SIGINT
     sigset_t maskSigint, maskNull;
@@ -69,8 +73,8 @@ int main() {
                 char* strComando1 = buffComandos[i];
                 char* strComando2 = NULL; // NULL se não tiver pipe
             
-                char* comando1[4]; // executavel + até 3 args
-                char* comando2[4]; // executavel + até 3 args
+                char* comando1[5]; // executavel + até 3 args + NULL
+                char* comando2[5]; // executavel + até 3 args + NULL
                 
                 // procurar pipe
                 char *posPipe = strchr(buffComandos[i], '#');
@@ -81,31 +85,125 @@ int main() {
 
                 // separa por espaços para preencher o vetor comando1
                 int qtdComando1 = 0;
-                char* token = strtok(strComando1, " "); 
+                char* token = strtok(strComando1, " \n"); 
                 while (token != NULL && qtdComando1 < 4) {  //falta notificar caso ultrapasse numero de argumentos?
                     comando1[qtdComando1++] = token;
-                    token = strtok(NULL, " "); 
+                    token = strtok(NULL, " \n"); 
                 }
+
+                comando1[qtdComando1] = (char *) NULL; // Termina com null para indicar fim dos argumentos no exec
                
                 
                 // separa por espaços para preencher o vetor comando2
                 if (strComando2 != NULL) {
                     int qtdComando2 = 0;
 
-                    token = strtok(strComando2, " "); 
+                    token = strtok(strComando2, " \n"); 
                     while (token != NULL && qtdComando2 < 4) {  //falta notificar caso ultrapasse numero de argumentos?
                         comando2[qtdComando2++] = token;
-                        token = strtok(NULL, " ");
+                        token = strtok(NULL, " zn");
                     }
-                     
+
+                    comando2[qtdComando2] = (char *) NULL; // Termina com null para indicar fim dos argumentos no exec
                 }
                 
 
 
-                
-                //executar o(s) comando(s) comando1 e comando2(caso pipe)   
-                
-                
+                if (strcmp(comando1[0], "cd") == 0){
+                    printf("\tComando interno: cd\n");
+                    // Aqui trata o comando cd, onde comando[1] é o caminho esperado, e o resto é ignorado
+
+                } else if (strcmp(comando1[0], "wait") == 0){
+                    printf("\tcomando interno: wait\n");
+                    // Aqui trata o comando wait, onde qualquer outro argumento é ignorado
+
+                } else if (strcmp(comando1[0], "exit") == 0){
+                    printf("\tcomando interno: exit\n");
+                    // Aqui trata o comando exit, onde qualquer outro argumento é ignorado
+
+                } else {
+                    // Execução dos comandos externos
+
+                    // Variável/Flag pra facilitar o uso de pipe
+                    int temPipe = 0;
+
+                    int fd[2];
+                    if (strComando2 != NULL){
+                        temPipe = 1;
+
+                        int ret = pipe(fd);
+                        if (ret == -1){
+                            printf("Erro ao criar pipe.\n");
+                            exit(EXIT_FAILURE);
+                        }
+                    }
+
+                    int pid = fork();
+
+                    if (pid < 0){
+                        printf("Erro ao fazer fork.\n");
+                        exit(EXIT_FAILURE);
+                    } else if (pid > 0) {
+                        // Código do pai, mudará o GPID do filho e criará um pipe
+                        // para o segundo filho, se necessário
+
+                        if (PGIDfilhos == -1) PGIDfilhos = pid;
+
+                        setpgid(pid, PGIDfilhos);
+
+                        if (temPipe){
+                            int pid2 = fork();
+
+                            if (pid2 < 0){
+                                printf("Erro ao fazer fork.\n");
+                                exit(EXIT_FAILURE);
+                            } else if (pid2 > 0) {
+                                // Código do pai, mudará o GPID do segundo filho
+
+                                setpgid(pid2, PGIDfilhos);
+
+                                // Fecha os descritores do pipe no pai
+                                close(fd[0]);
+                                close(fd[1]);
+
+                            } else {
+                                // Código do segundo filho, trata
+                                // o pipe e chama o exec
+
+                                // Fecha o descritor de escrita, já que esse filho apenas lê
+                                close(fd[1]);
+
+                                // Redireciona a entrada do filho para a saída do pipe
+                                dup2(fd[0], 0);
+                                close(fd[0]);
+
+                                if (execvp(comando2[0], comando2) == -1){
+                                    printf("\tErro no exec.\n");
+                                    // Tem que tratar com o errno, e provavelmente tratar o primeiro filho
+
+                                }
+                            }
+                        }
+                    } else {
+                        // Código do primeiro filho, aqui será tratado o
+                        // pipe e então chamado o comando exec
+
+                        if (temPipe){
+                            // Fecha o descritor de leitura, já que esse filho apenas escreve
+                            close(fd[0]);
+
+                            // Redireciona a saída do filho para a entrada do pipe
+                            dup2(fd[1], 1);
+                            close(fd[1]);
+                        }
+
+                        if (execvp(comando1[0], comando1) == -1){
+                            printf("\tErro no exec.\n");
+                            // Tem que tratar com o errno, e provavelmente tratar o segundo filho (se tiver)
+
+                        }
+                    }
+                }
             }
 
 
