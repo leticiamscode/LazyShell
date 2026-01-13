@@ -101,7 +101,7 @@ int main() {
                     token = strtok(strComando2, " \n"); 
                     while (token != NULL && qtdComando2 < 4) {  //falta notificar caso ultrapasse numero de argumentos?
                         comando2[qtdComando2++] = token;
-                        token = strtok(NULL, " zn");
+                        token = strtok(NULL, " \n");
                     }
 
                     comando2[qtdComando2] = (char *) NULL; // Termina com null para indicar fim dos argumentos no exec
