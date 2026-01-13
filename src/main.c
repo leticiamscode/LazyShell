@@ -103,7 +103,7 @@ int main() {
 
 
                 
-                //executar o(s) comando(s) comando1 e args2(caso pipe)   
+                //executar o(s) comando(s) comando1 e comando2(caso pipe)   
                 
                 
             }
