@@ -66,39 +66,44 @@ int main() {
         if (executar == 1) {
             // trata buffer e executa
             for (int i = 0; i < tamBuffer; i++) {
-                char* comando1 = buffComandos[i];
-                char* comando2 = NULL; // NULL se não tiver pipe
+                char* strComando1 = buffComandos[i];
+                char* strComando2 = NULL; // NULL se não tiver pipe
             
-                char* args1[4]; // executavel + até 3 args
-                char* args2[4]; // executavel + até 3 args
+                char* comando1[4]; // executavel + até 3 args
+                char* comando2[4]; // executavel + até 3 args
                 
                 // procurar pipe
                 char *posPipe = strchr(buffComandos[i], '#');
                 if (posPipe != NULL) {
-                    *posPipe = '\0';         // insere \0 no comando1
-                    comando2 = posPipe + 1;  // posicao inicio do segundo comando
+                    *posPipe = '\0';        // insere \0 no strComando1
+                    strComando2 = posPipe + 1;  // posicao inicio do segundo comando
                 }
 
-                // separa por espaços para preencher o vetor args1
-                int qtdArgs1 = 0;
-                char* token = strtok(comando1, " "); 
-                while (token != NULL && qtdArgs1 < 4) {  //falta caso ultrapasse numero de argumentos?
-                    args1[qtdArgs1++] = token;
+                // separa por espaços para preencher o vetor comando1
+                int qtdComando1 = 0;
+                char* token = strtok(strComando1, " "); 
+                while (token != NULL && qtdComando1 < 4) {  //falta caso ultrapasse numero de argumentos?
+                    comando1[qtdComando1++] = token;
                     token = strtok(NULL, " "); 
                 }
+               
                 
-                // separa por espaços para preencher o vetor args2
-                if (comando2 != NULL) {
-                    int qtdArgs2 = 0;
+                // separa por espaços para preencher o vetor comando2
+                if (strComando2 != NULL) {
+                    int qtdComando2 = 0;
 
-                    token = strtok(comando2, " "); 
-                    while (token != NULL && qtdArgs2 < 4) {  //falta notificar caso ultrapasse numero de argumentos?
-                        args2[qtdArgs2++] = token;
+                    token = strtok(strComando2, " "); 
+                    while (token != NULL && qtdComando2 < 4) {  //falta notificar caso ultrapasse numero de argumentos?
+                        comando2[qtdComando2++] = token;
                         token = strtok(NULL, " ");
                     }
+                     
                 }
                 
-                //executar o(s) comando(s) args1 e args2(caso pipe)   
+
+
+                
+                //executar o(s) comando(s) comando1 e args2(caso pipe)   
                 
                 
             }
