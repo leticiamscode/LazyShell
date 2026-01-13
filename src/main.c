@@ -1,59 +1,150 @@
 #include <stdio.h>
-#include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <signal.h>
 #include <string.h>
+#include <stdlib.h>
 
-   
+// constantes
+#define MAX_LINHA 1000
+#define MAX_BUFFER 5
+
+
+
+// prototipos de funcoes
+void trataSigint(int signum);
+
+void trataSigalrm(int signum);
+
+void trataSigchld(int signum);
+
+
+
+char linhaLsh[7] = "\nlsh> ";
+int  tamBuffer=0, numFilhosVivos=0,
+     executar=0, resistir=1, encerrar=0;
+
+
 int main() {
-    //Esboço:
-    // char* buffer[5] ? - - linhas de comando;
-    //obs : arquivo executavel + maximo de argumentos 3 
-    // loop para leitura - apenas validar comandos e enfileirar no buffer (buffer cheio ignorar)
-        //comandos internos (comandos separados por linhas) - cd, wait, exit
-        //comandos externos e pipes (#) - uma linha de comando pode receber até 2 comandos externos, unidos por um ‘#’
+    // Configura mascara para bloquear SIGINT
+    sigset_t maskSigint, maskNull;
+    sigemptyset(&maskSigint);
+    sigaddset(&maskSigint, SIGINT);
+    sigemptyset(&maskNull);
 
-    //Receba sinal Ctrl-c
-        // if tem comandos no buffer 
-            //executar os comandos  e esvaziar o buffer
-        //else (buffer vazio e com processos filhos em execução )
-            //exibir: “Não posso morrer... sou lenta mas sou mãe de família!!!”
-            // ocorrer outro Ctrl-c em ate 3 seg
-            //exibir: “Ok... você venceu! Adeus!” (… finalizando sua execução em seguida )
-        //obs: buffer vazio e sem processos filhos em execucao (O que ocorre?)
+    // Configura tratadores para SIGINT, SIGALRM e SIGCHLD
+    // Os tratadores de SIGALRM e SIGCHLD devem bloquear SIGINT
+    struct sigaction saSigint = {&trataSigint, maskNull, 0},
+                     saSigalrm = {&trataSigalrm, maskSigint, 0},
+                     saSigchld = {&trataSigchld, maskSigint, 0};
+    sigaction(SIGINT, &saSigint, NULL);
+    sigaction(SIGALRM, &saSigalrm, NULL);
+    sigaction(SIGCHLD, &saSigchld, NULL);
 
-    #define MAX_LINHA 200
-    #define MAX_BUFFER 5
-
-    char* buffer[MAX_BUFFER];
-    for(int i=0; i<MAX_BUFFER; i++){
-        buffer[i] = malloc(sizeof(char)*MAX_LINHA); //tamanho da linha?
-    }
-    int position = 0; //resetar position em caso de CTRL -C
+    
+    char buff[MAX_LINHA];
+    char buffComandos[MAX_BUFFER][MAX_LINHA];
+    
+    while (1) {
+        // Assinatura da lazy shell
+        printf("%s", linhaLsh);
 
 
-    while(1) {
-
-        printf("lsh> ");
-
-        if (position < MAX_BUFFER) {
-            if (fgets(buffer[position], MAX_LINHA, stdin) != NULL) { //falta limitar quantidade de argumentos
-                char* myPtr = strtok(buffer[position], " ");
-                while(myPtr){
-                    printf("%s\n", myPtr); //DEBUG
-                    myPtr = strtok(NULL, " "); //PROXIMA STRING SEPARADA POR ESPAÇO EM buffer[position]
-                }
-                position++;
+        // Tenta ler da entrada
+        if(fgets(buff, MAX_LINHA, stdin)!=NULL){ 
+     
+            if (tamBuffer < MAX_BUFFER) {
+                // copia pro buffer de comandos
+                strcpy(buffComandos[tamBuffer], buff); 
+                tamBuffer++;
             }
-        } else {
-            char lixo[MAX_LINHA];
-            fgets(lixo, MAX_LINHA, stdin); // descarta  no caso de buffer cheio
         }
+
+
+
+        // Executa os comandos armazenados
+        if (executar == 1) {
+            // trata buffer e executa
+            for (int i = 0; i < tamBuffer; i++) {
+                char* comando1 = buffComandos[i];
+                char* comando2 = NULL; // NULL se não tiver pipe
+            
+                char* args1[4]; // executavel + até 3 args
+                char* args2[4]; // executavel + até 3 args
+                
+                // procurar pipe
+                char *posPipe = strchr(buffComandos[i], '#');
+                if (posPipe != NULL) {
+                    *posPipe = '\0';         // insere \0 no comando1
+                    comando2 = posPipe + 1;  // posicao inicio do segundo comando
+                }
+
+                // separa por espaços para preencher o vetor args1
+                int qtdArgs1 = 0;
+                char* token = strtok(comando1, " "); 
+                while (token != NULL && qtdArgs1 < 4) {  //falta caso ultrapasse numero de argumentos?
+                    args1[qtdArgs1++] = token;
+                    token = strtok(NULL, " "); 
+                }
+                
+                // separa por espaços para preencher o vetor args2
+                if (comando2 != NULL) {
+                    int qtdArgs2 = 0;
+
+                    token = strtok(comando2, " "); 
+                    while (token != NULL && qtdArgs2 < 4) {  //falta notificar caso ultrapasse numero de argumentos?
+                        args2[qtdArgs2++] = token;
+                        token = strtok(NULL, " ");
+                    }
+                }
+                
+                //executar o(s) comando(s) args1 e args2(caso pipe)   
+                
+                
+            }
+
+
+            resistir = 1; // Primeiro, para SIGINT nao ativar o encerramento
+            tamBuffer = 0; // Segundo, para SIGINT nao reativar a execucao
+            executar = 0;
+        }
+
+
+        // Verificacoes de encerramento
+        if (resistir == 0)
+            alarm(3);
+
+        if (encerrar == 1)
+            break;
     }
 
-    //tratador de sinal 
-
-    for(int i=0; i<MAX_BUFFER; i++){
-        free(buffer[i]); 
-    }
+    // encerra e espera processos filhos?
 
     return 0;
+}
+
+
+
+void trataSigint(int signum) {
+    if (tamBuffer > 0) {
+        executar = 1;
+    }
+    else { // So pode ser 0
+        if ((numFilhosVivos > 0) && (resistir == 1)) {
+            printf("%sNão posso morrer... sou lenta mas sou mãe de família!!!%s", linhaLsh, linhaLsh);
+            resistir = 0;
+        }
+        else {
+            printf("%sOk... você venceu! Adeus!", linhaLsh);
+            encerrar = 1;
+        }
+    }
+}
+
+void trataSigalrm(int signum) {
+    resistir = 1;
+}
+
+void trataSigchld(int signum) {
+    numFilhosVivos--;
 }
