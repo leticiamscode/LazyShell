@@ -1,15 +1,17 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <signal.h>
 
-// constantes
+// Constantes
 #define MAX_LINHA 1000
 #define MAX_BUFFER 5
+#define MAX_ARGS 3
 
 
 
-// prototipos de funcoes
+// Prototipos de funcoes
 void trataSigint(int signum);
 
 void trataSigalrm(int signum);
@@ -18,25 +20,41 @@ void trataSigchld(int signum);
 
 
 
+// Variaveis globais (para uso em tratadores)
 char linhaLsh[7] = "\nlsh> ";
-int  tamBuffer=0, numFilhosVivos=0,
-     executar=0, resistir=1, encerrar=0;
+int  tamBuffer=0, numFilhosVivos=1,
+     executar=0, resistir=1;
 
 int main() {
     // Configura mascara para bloquear SIGINT
-    sigset_t maskSigint, maskNull;
-    sigemptyset(&maskSigint);
-    sigaddset(&maskSigint, SIGINT);
-    sigemptyset(&maskNull);
+    sigset_t maskSigint;
+    if ((sigemptyset(&maskSigint) == -1) ||
+        (sigaddset(&maskSigint, SIGINT) == -1)) {
+        perror("Falha ao construir mascara de sinais.\n");
+        exit(1);
+    }
 
     // Configura tratadores para SIGINT, SIGALRM e SIGCHLD
     // Os tratadores de SIGALRM e SIGCHLD devem bloquear SIGINT
-    struct sigaction saSigint = {&trataSigint, maskNull, 0},
-                     saSigalrm = {&trataSigalrm, maskSigint, 0},
-                     saSigchld = {&trataSigchld, maskSigint, 0};
-    sigaction(SIGINT, &saSigint, NULL);
-    sigaction(SIGALRM, &saSigalrm, NULL);
-    sigaction(SIGCHLD, &saSigchld, NULL);
+    struct sigaction saSigint, saSigalrm, saSigchld;
+    saSigint.sa_handler = &trataSigint;
+    saSigalrm.sa_handler = &trataSigalrm;
+    saSigchld.sa_handler = &trataSigchld;
+    saSigalrm.sa_mask = saSigchld.sa_mask = maskSigint;
+    saSigint.sa_flags = saSigalrm.sa_flags = saSigchld.sa_flags = 0;
+    if ((sigemptyset(&saSigint.sa_mask) == -1) ||
+        (sigaction(SIGINT, &saSigint, NULL) == -1)) {
+        perror("Falha ao instalar tratador de SIGINT.\n");
+        exit(1);
+    }
+    if (sigaction(SIGALRM, &saSigalrm, NULL) == -1) {
+        perror("Falha ao instalar tratador de SIGALRM.\n");
+        exit(1);
+    }
+    if (sigaction(SIGCHLD, &saSigchld, NULL) == -1) {
+        perror("Falha ao instalar tratador de SIGCHLD.\n");
+        exit(1);
+    }
 
     
     char buff[MAX_LINHA];
@@ -47,11 +65,11 @@ int main() {
 
 
         // Tenta ler da entrada
-        fgets(buff, MAX_LINHA, stdin);
-        if (tamBuffer < MAX_BUFFER) {
-            // copia pro buffer de comandos
-            tamBuffer++;
-        }
+        if (fgets(buff, MAX_LINHA, stdin) != NULL)
+            if (tamBuffer < MAX_BUFFER) {
+                tamBuffer++;
+                // copia pro buffer de comandos
+            }
 
 
         // Executa os comandos armazenados
@@ -62,14 +80,6 @@ int main() {
             tamBuffer = 0; // Segundo, para SIGINT nao reativar a execucao
             executar = 0;
         }
-
-
-        // Verificacoes de encerramento
-        if (resistir == 0)
-            alarm(3);
-
-        if (encerrar == 1)
-            break;
     }
 
     // encerra e espera processos filhos?
@@ -85,12 +95,13 @@ void trataSigint(int signum) {
     }
     else { // So pode ser 0
         if ((numFilhosVivos > 0) && (resistir == 1)) {
-            printf("%sNão posso morrer... sou lenta mas sou mãe de família!!!%s", linhaLsh, linhaLsh);
+            printf("%sNão posso morrer... sou lenta mas sou mãe de família!!!", linhaLsh);
             resistir = 0;
+            alarm(3);
         }
         else {
-            printf("%sOk... você venceu! Adeus!", linhaLsh);
-            encerrar = 1;
+            printf("%sOk... você venceu! Adeus!\n", linhaLsh);
+            exit(0);
         }
     }
 }
