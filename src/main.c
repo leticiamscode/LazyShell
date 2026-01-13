@@ -82,7 +82,7 @@ int main() {
                 // separa por espaços para preencher o vetor comando1
                 int qtdComando1 = 0;
                 char* token = strtok(strComando1, " "); 
-                while (token != NULL && qtdComando1 < 4) {  //falta caso ultrapasse numero de argumentos?
+                while (token != NULL && qtdComando1 < 4) {  //falta notificar caso ultrapasse numero de argumentos?
                     comando1[qtdComando1++] = token;
                     token = strtok(NULL, " "); 
                 }
