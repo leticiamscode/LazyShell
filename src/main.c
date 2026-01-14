@@ -9,6 +9,7 @@
 #define MAX_LINHA 1000
 #define MAX_BUFFER 5
 
+#define WHITESPACES " \n\t" // Whitespaces usados como delimitadores do strtok()
 
 
 // prototipos de funcoes
@@ -55,15 +56,14 @@ int main() {
 
 
         // Tenta ler da entrada
-        if(fgets(buff, MAX_LINHA, stdin)!=NULL){ 
-     
-            if (tamBuffer < MAX_BUFFER) {
+        if(fgets(buff, MAX_LINHA, stdin) != NULL){ 
+            
+            if ((tamBuffer < MAX_BUFFER) && sscanf(buff, " %[^\n]", buffComandos[tamBuffer]) == 1) {
                 // copia pro buffer de comandos
-                strcpy(buffComandos[tamBuffer], buff); 
                 tamBuffer++;
             }
         }
-
+        
 
 
         // Executa os comandos armazenados
@@ -76,11 +76,6 @@ int main() {
                 char* comando1[5] = {NULL, NULL, NULL, NULL, NULL}; // executavel + até 3 args + NULL
                 char* comando2[5] = {NULL, NULL, NULL, NULL, NULL}; // executavel + até 3 args + NULL
                 
-                // Inicializa a última posição do vetor como NULL, para indicar fim dos argumentos
-                // caso esse último seja alterado, significa mais de 3 argumentos lidos
-                comando1[4] = (char *) NULL;
-                comando2[4] = (char *) NULL;
-
                 // procurar pipe
                 char *posPipe = strchr(buffComandos[i], '#');
                 if (posPipe != NULL) {
@@ -90,10 +85,10 @@ int main() {
 
                 // separa por espaços para preencher o vetor comando1
                 int qtdComando1 = 0;
-                char* token = strtok(strComando1, " \n"); 
+                char* token = strtok(strComando1, WHITESPACES); 
                 while (token != NULL && qtdComando1 < 5) {  //falta notificar caso ultrapasse numero de argumentos?
                     comando1[qtdComando1++] = token;
-                    token = strtok(NULL, " \n"); 
+                    token = strtok(NULL, WHITESPACES); 
                 }
                 
                 
@@ -101,10 +96,10 @@ int main() {
                 if (strComando2 != NULL) {
                     int qtdComando2 = 0;
                     
-                    token = strtok(strComando2, " \n"); 
+                    token = strtok(strComando2, WHITESPACES); 
                     while (token != NULL && qtdComando2 < 5) {  //falta notificar caso ultrapasse numero de argumentos?
                         comando2[qtdComando2++] = token;
-                        token = strtok(NULL, " \n");
+                        token = strtok(NULL, WHITESPACES);
                     }
                 }
 
@@ -122,6 +117,10 @@ int main() {
 
                 } else {
                     // Execução dos comandos externos
+
+                    // Função de DEBUG para listar/imprimir os argumentos separadamente
+                    // for (int i=0; i<5; i++) printf("arg %d: '%s'\n", i, comando1[i]);
+                    // for (int i=0; i<5; i++) printf("arg %d: '%s'\n", i, comando2[i]);
 
                     // Se o elemento de índice 4 foi alterado de NULL, significa que excedeu o limite de argumentos
                     if ((comando1[4] != (char *) NULL) || (comando2[4] != (char *) NULL)){
