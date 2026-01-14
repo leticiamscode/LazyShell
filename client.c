@@ -24,13 +24,13 @@ void trataSigchld(int signum);
 
 void comandoWait();
 
-void comandoExit(int *vetPgid, int numPgid);
+void comandoExit(int *vetPgid);
 
 
 
 // Variaveis globais (para uso em tratadores)
 char linhaLsh[6] = "lsh> ";
-int  tamBuffer=0, numFilhosVivos=0,
+int  tamBuffer=0, numPgid=0, numFilhosVivos=0,
      executar=0, resistir=1;
 
 int main() {
@@ -65,12 +65,14 @@ int main() {
     }
 
     // Aloca vetor de inteiros para guardar os PGIDs dos processos filhos
-    int  *vetPgid, numPgid=0, maxPgid=MAX_PGID_DFL;
+    int  *vetPgid, maxPgid=MAX_PGID_DFL;
     vetPgid = malloc(sizeof(int) * maxPgid);
     if (vetPgid == NULL) {
         perror("Falha ao alocar vetor de PGIDs.\n");
         exit(EXIT_FAILURE);
     }
+
+
 
     // Loop de funcionamento da lazy shell
     char buff[MAX_LINHA], buffComandos[MAX_BUFFER][MAX_LINHA];
@@ -98,6 +100,8 @@ int main() {
 
 
 
+    // Saida deve ser por aqui?
+    free(vetPgid);
     return EXIT_SUCCESS;
 }
 
@@ -129,6 +133,10 @@ void trataSigalrm(int signum) {
 
 void trataSigchld(int signum) {
     numFilhosVivos--;
+
+    // Medida de economia de memoria, caso nao haja mais filhos
+    if (numFilhosVivos == 0)
+        numPgid = 0;
 }
 
 void comandoWait() {
@@ -147,7 +155,7 @@ void comandoWait() {
         printf("Nao ha processos filhos a liberar.\n");
 }
 
-void comandoExit(int *vetPgid, int numPgid) {
+void comandoExit(int *vetPgid) {
     // Matando os processos vivos que restam
     for (int i=0; (i < numPgid) && (numFilhosVivos > 0); i++)
         kill(-vetPgid[i], SIGKILL);
@@ -157,5 +165,6 @@ void comandoExit(int *vetPgid, int numPgid) {
         if ((waitpid(-1, NULL, WNOHANG) == -1) && (errno == ECHILD))
             break;
 
+    free(vetPgid);
     exit(EXIT_SUCCESS); // Deveria ser em outro lugar?
 }
