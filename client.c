@@ -21,8 +21,8 @@ void trataSigchld(int signum);
 
 
 // Variaveis globais (para uso em tratadores)
-char linhaLsh[7] = "\nlsh> ";
-int  tamBuffer=0, numFilhosVivos=1,
+char linhaLsh[6] = "lsh> ";
+int  tamBuffer=0, numFilhosVivos=0,
      executar=0, resistir=1;
 
 int main() {
@@ -90,12 +90,14 @@ int main() {
 
 
 void trataSigint(int signum) {
+    printf("\n"); // Para separar a saida do comando ^C
+
     if (tamBuffer > 0) {
         executar = 1;
     }
     else { // So pode ser 0
         if ((numFilhosVivos > 0) && (resistir == 1)) {
-            printf("%sNão posso morrer... sou lenta mas sou mãe de família!!!", linhaLsh);
+            printf("%sNão posso morrer... sou lenta mas sou mãe de família!!!\n", linhaLsh);
             resistir = 0;
             alarm(3);
         }
@@ -107,6 +109,7 @@ void trataSigint(int signum) {
 }
 
 void trataSigalrm(int signum) {
+    printf("\n"); // Para separar a proxima linhaLsh
     resistir = 1;
 }
 
