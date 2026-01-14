@@ -73,9 +73,14 @@ int main() {
                 char* strComando1 = buffComandos[i];
                 char* strComando2 = NULL; // NULL se não tiver pipe
             
-                char* comando1[5]; // executavel + até 3 args + NULL
-                char* comando2[5]; // executavel + até 3 args + NULL
+                char* comando1[5] = {NULL, NULL, NULL, NULL, NULL}; // executavel + até 3 args + NULL
+                char* comando2[5] = {NULL, NULL, NULL, NULL, NULL}; // executavel + até 3 args + NULL
                 
+                // Inicializa a última posição do vetor como NULL, para indicar fim dos argumentos
+                // caso esse último seja alterado, significa mais de 3 argumentos lidos
+                comando1[4] = (char *) NULL;
+                comando2[4] = (char *) NULL;
+
                 // procurar pipe
                 char *posPipe = strchr(buffComandos[i], '#');
                 if (posPipe != NULL) {
@@ -86,28 +91,22 @@ int main() {
                 // separa por espaços para preencher o vetor comando1
                 int qtdComando1 = 0;
                 char* token = strtok(strComando1, " \n"); 
-                while (token != NULL && qtdComando1 < 4) {  //falta notificar caso ultrapasse numero de argumentos?
+                while (token != NULL && qtdComando1 < 5) {  //falta notificar caso ultrapasse numero de argumentos?
                     comando1[qtdComando1++] = token;
                     token = strtok(NULL, " \n"); 
                 }
-
-                comando1[qtdComando1] = (char *) NULL; // Termina com null para indicar fim dos argumentos no exec
-               
+                
                 
                 // separa por espaços para preencher o vetor comando2
                 if (strComando2 != NULL) {
                     int qtdComando2 = 0;
-
+                    
                     token = strtok(strComando2, " \n"); 
-                    while (token != NULL && qtdComando2 < 4) {  //falta notificar caso ultrapasse numero de argumentos?
+                    while (token != NULL && qtdComando2 < 5) {  //falta notificar caso ultrapasse numero de argumentos?
                         comando2[qtdComando2++] = token;
                         token = strtok(NULL, " \n");
                     }
-
-                    comando2[qtdComando2] = (char *) NULL; // Termina com null para indicar fim dos argumentos no exec
                 }
-                
-
 
                 if (strcmp(comando1[0], "cd") == 0){
                     printf("\tComando interno: cd\n");
@@ -123,6 +122,12 @@ int main() {
 
                 } else {
                     // Execução dos comandos externos
+
+                    // Se o elemento de índice 4 foi alterado de NULL, significa que excedeu o limite de argumentos
+                    if ((comando1[4] != (char *) NULL) || (comando2[4] != (char *) NULL)){
+                        printf("\tERRO: Comando com mais de 3 argumentos.\n");
+                        continue;
+                    }
 
                     // Variável/Flag pra facilitar o uso de pipe
                     int temPipe = 0;
