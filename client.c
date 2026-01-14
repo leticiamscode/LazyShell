@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -9,6 +10,9 @@
 #define MAX_BUFFER 5
 #define MAX_ARGS 3
 
+#define MAX_PGID_DFL 10
+#define MAX_PGID_RSZ 2
+
 
 
 // Prototipos de funcoes
@@ -17,6 +21,10 @@ void trataSigint(int signum);
 void trataSigalrm(int signum);
 
 void trataSigchld(int signum);
+
+void comandoWait();
+
+void comandoExit(int *vetPgid, int numPgid);
 
 
 
@@ -45,20 +53,27 @@ int main() {
     if ((sigemptyset(&saSigint.sa_mask) == -1) ||
         (sigaction(SIGINT, &saSigint, NULL) == -1)) {
         perror("Falha ao instalar tratador de SIGINT.\n");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
     if (sigaction(SIGALRM, &saSigalrm, NULL) == -1) {
         perror("Falha ao instalar tratador de SIGALRM.\n");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
     if (sigaction(SIGCHLD, &saSigchld, NULL) == -1) {
         perror("Falha ao instalar tratador de SIGCHLD.\n");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
-    
-    char buff[MAX_LINHA];
+    // Aloca vetor de inteiros para guardar os PGIDs dos processos filhos
+    int  *vetPgid, numPgid=0, maxPgid=MAX_PGID_DFL;
+    vetPgid = malloc(sizeof(int) * maxPgid);
+    if (vetPgid == NULL) {
+        perror("Falha ao alocar vetor de PGIDs.\n");
+        exit(EXIT_FAILURE);
+    }
 
+    // Loop de funcionamento da lazy shell
+    char buff[MAX_LINHA], buffComandos[MAX_BUFFER][MAX_LINHA];
     while (1) {
         // Assinatura da lazy shell
         printf("%s", linhaLsh);
@@ -66,10 +81,9 @@ int main() {
 
         // Tenta ler da entrada
         if (fgets(buff, MAX_LINHA, stdin) != NULL)
-            if (tamBuffer < MAX_BUFFER) {
+            if ((tamBuffer < MAX_BUFFER) &&
+                (sscanf(buff, " %[^\n]", buffComandos[tamBuffer]) == 1))
                 tamBuffer++;
-                // copia pro buffer de comandos
-            }
 
 
         // Executa os comandos armazenados
@@ -82,9 +96,9 @@ int main() {
         }
     }
 
-    // encerra e espera processos filhos?
 
-    return 0;
+
+    return EXIT_SUCCESS;
 }
 
 
@@ -103,7 +117,7 @@ void trataSigint(int signum) {
         }
         else {
             printf("%sOk... você venceu! Adeus!\n", linhaLsh);
-            exit(0);
+            exit(EXIT_SUCCESS);
         }
     }
 }
@@ -115,4 +129,33 @@ void trataSigalrm(int signum) {
 
 void trataSigchld(int signum) {
     numFilhosVivos--;
+}
+
+void comandoWait() {
+    int pid, wstatus, numWait=0;
+
+    while ((pid = waitpid(-1, &wstatus, WNOHANG)) > 0) {
+        if (WIFEXITED(wstatus))
+            printf("O processo %d terminou com retorno %d.\n", pid, WEXITSTATUS(wstatus));
+        else if (WIFSIGNALED(wstatus))
+            printf("O processo %d foi terminado pelo sinal %d.\n", pid, WTERMSIG(wstatus));
+
+        numWait++;
+    }
+
+    if (numWait == 0)
+        printf("Nao ha processos filhos a liberar.\n");
+}
+
+void comandoExit(int *vetPgid, int numPgid) {
+    // Matando os processos vivos que restam
+    for (int i=0; (i < numPgid) && (numFilhosVivos > 0); i++)
+        kill(-vetPgid[i], SIGKILL);
+
+    // Liberando todos os processos filhos
+    while (1)
+        if ((waitpid(-1, NULL, WNOHANG) == -1) && (errno == ECHILD))
+            break;
+
+    exit(EXIT_SUCCESS); // Deveria ser em outro lugar?
 }
