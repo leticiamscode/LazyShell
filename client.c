@@ -10,9 +10,6 @@
 #define MAX_BUFFER 5
 #define MAX_ARGS 3
 
-#define MAX_PGID_DFL 10
-#define MAX_PGID_RSZ 2
-
 
 
 // Prototipos de funcoes
@@ -24,32 +21,33 @@ void trataSigchld(int signum);
 
 void comandoWait();
 
-void comandoExit(int *vetPgid);
+void comandoExit();
 
 
 
 // Variaveis globais (para uso em tratadores)
-char linhaLsh[6] = "lsh> ";
-int  tamBuffer=0, numPgid=0, numFilhosVivos=0,
-     executar=0, resistir=1;
+char pidLsh[12], linhaLsh[6]="lsh> ";
+int  tamBuffer=0, executar=0, resistir=1;
 
 int main() {
+    // Poe PID em uma string, para uso eventual
+    snprintf(pidLsh, 11, "%d", getpid());
+
     // Configura mascara para bloquear SIGINT
-    sigset_t maskSigint;
-    if ((sigemptyset(&maskSigint) == -1) ||
-        (sigaddset(&maskSigint, SIGINT) == -1)) {
+    sigset_t maskSigalrm;
+    if ((sigemptyset(&maskSigalrm) == -1) ||
+        (sigaddset(&maskSigalrm, SIGINT) == -1)) {
         perror("Falha ao construir mascara de sinais");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
-    // Configura tratadores para SIGINT, SIGALRM e SIGCHLD
-    // Os tratadores de SIGALRM e SIGCHLD devem bloquear SIGINT
-    struct sigaction saSigint, saSigalrm, saSigchld;
+    // Configura tratadores para SIGINT e SIGALRM
+    // O tratador de SIGALRM deve bloquear SIGINT
+    struct sigaction saSigint, saSigalrm;
     saSigint.sa_handler = &trataSigint;
     saSigalrm.sa_handler = &trataSigalrm;
-    saSigchld.sa_handler = &trataSigchld;
-    saSigalrm.sa_mask = saSigchld.sa_mask = maskSigint;
-    saSigint.sa_flags = saSigalrm.sa_flags = saSigchld.sa_flags = 0;
+    saSigalrm.sa_mask = maskSigalrm;
+    saSigint.sa_flags = saSigalrm.sa_flags = 0;
     if ((sigemptyset(&saSigint.sa_mask) == -1) ||
         (sigaction(SIGINT, &saSigint, NULL) == -1)) {
         perror("Falha ao instalar tratador de SIGINT");
@@ -57,18 +55,6 @@ int main() {
     }
     if (sigaction(SIGALRM, &saSigalrm, NULL) == -1) {
         perror("Falha ao instalar tratador de SIGALRM");
-        exit(EXIT_FAILURE);
-    }
-    if (sigaction(SIGCHLD, &saSigchld, NULL) == -1) {
-        perror("Falha ao instalar tratador de SIGCHLD");
-        exit(EXIT_FAILURE);
-    }
-
-    // Aloca vetor de inteiros para guardar os PGIDs dos processos filhos
-    int  *vetPgid, maxPgid=MAX_PGID_DFL;
-    vetPgid = malloc(sizeof(int) * maxPgid);
-    if (vetPgid == NULL) {
-        perror("Falha ao alocar vetor de PGIDs");
         exit(EXIT_FAILURE);
     }
 
@@ -101,7 +87,6 @@ int main() {
 
 
     // Saida deve ser por aqui?
-    free(vetPgid);
     return EXIT_SUCCESS;
 }
 
@@ -110,39 +95,54 @@ int main() {
 void trataSigint(int signum) {
     printf("\n"); // Para separar a saida do comando ^C
 
+    // Verificacao da existencia de comandos a executar
     if (tamBuffer > 0) {
         executar = 1;
     }
     else { // So pode ser 0
+        // Verificacao da existencia de filhos vivos
         int pid = fork();
-        if (pid == -1) {     // Nao houve fork
+        if (pid == -1) {     // NAO HOUVE FORK
             perror("Falha ao procurar processos filhos (fork)");
             exit(EXIT_FAILURE);
         }
-        else if (pid == 0) { // Processo filho
-            if (execlp("pgrep", "pgrep", "-A", "-c", "-s", "0", NULL) == -1) {
+        else if (pid == 0) { // PROCESSO FILHO
+            // Criacao de pipe interno para evitar saida no terminal
+            int fd[2];
+            if (pipe(fd) == -1) {
+                perror("Falha ao procurar processos filhos (pipe)");
+                exit(EXIT_FAILURE);
+            }
+            if ((dup2(fd[0], 0) == -1) || (dup2(fd[1], 1) == -1)) {
+                perror("Falha ao procurar processos filhos (dup)");
+                exit(EXIT_FAILURE);
+            }
+            close(fd[0]);
+            close(fd[1]);
+            
+            // Execucao de pgrep para encontrar filhos vivos da lsh
+            if (execlp("pgrep", "pgrep", "-P", pidLsh, NULL) == -1) {
                 perror("Falha ao procurar processos filhos (exec)");
                 exit(EXIT_FAILURE);
             }
         }
-        else {               // Processo pai
-            int status;
-            if (waitpid(pid, &status, 0) == -1) {
-                perror("Falha ao procurar processos filhos (exec)");
-                exit(EXIT_FAILURE);
-            }
-            // lidar com caso em que processo eh sinalizado?
+                            // PROCESSO PAI
+        int status;
+        if (waitpid(pid, &status, 0) == -1) {
+            perror("Falha ao procurar processos filhos (wait)");
+            exit(EXIT_FAILURE);
+        }
+        // lidar com caso em que processo eh sinalizado?
 
-            // Existem filhos vivos e a lsh pode resistir
-            if ((WEXITSTATUS(status) == 0) && (resistir == 1)) {
-                printf("%sNão posso morrer... sou lenta mas sou mãe de família!!!\n", linhaLsh);
-                resistir = 0;
-                alarm(3);
-            }
-            else {
-                printf("%sOk... você venceu! Adeus!\n", linhaLsh);
-                exit(EXIT_SUCCESS);
-            }
+        // Existem filhos vivos e a lsh pode resistir
+        if ((WEXITSTATUS(status) == 0) && (resistir == 1)) {
+            printf("%sNão posso morrer... sou lenta mas sou mãe de família!!!\n", linhaLsh);
+            resistir = 0;
+            alarm(3);
+        }
+        else {
+            printf("%sOk... você venceu! Adeus!\n", linhaLsh);
+            exit(EXIT_SUCCESS);
         }
     }
 }
@@ -150,14 +150,6 @@ void trataSigint(int signum) {
 void trataSigalrm(int signum) {
     printf("\n"); // Para separar a proxima linhaLsh
     resistir = 1;
-}
-
-void trataSigchld(int signum) {
-    numFilhosVivos--;
-
-    // Medida de economia de memoria, caso nao haja mais filhos
-    if (numFilhosVivos == 0)
-        numPgid = 0;
 }
 
 void comandoWait() {
@@ -176,16 +168,44 @@ void comandoWait() {
         printf("Nao ha processos filhos a liberar.\n");
 }
 
-void comandoExit(int *vetPgid) {
+void comandoExit() {
     // Matando os processos vivos que restam
-    for (int i=0; (i < numPgid) && (numFilhosVivos > 0); i++)
-        kill(-vetPgid[i], SIGKILL);
+    int pid = fork();
+    if (pid == -1) {     // NAO HOUVE FORK
+        perror("Falha ao matar processos filhos (fork)");
+        exit(EXIT_FAILURE);
+    }
+    else if (pid == 0) { // PROCESSO FILHO
+        // Criacao de pipe interno para evitar saida no terminal
+        int fd[2];
+        if (pipe(fd) == -1) {
+            perror("Falha ao matar processos filhos (pipe)");
+            exit(EXIT_FAILURE);
+        }
+        if ((dup2(fd[0], 0) == -1) || (dup2(fd[1], 1) == -1)) {
+            perror("Falha ao matar processos filhos (dup)");
+            exit(EXIT_FAILURE);
+        }
+        close(fd[0]);
+        close(fd[1]);
+        
+        // Execucao de pkill para matar filhos vivos da lsh
+        if (execlp("pkill", "pkill", "-P", pidLsh, NULL) == -1) {
+            perror("Falha ao matar processos filhos (exec)");
+            exit(EXIT_FAILURE);
+        }
+    }
+                        // PROCESSO PAI
+    if (waitpid(pid, NULL, 0) == -1) {
+        perror("Falha ao matar processos filhos (wait)");
+        exit(EXIT_FAILURE);
+    }
+    // lidar com caso em que processo eh sinalizado?
 
     // Liberando todos os processos filhos
     while (1)
         if ((waitpid(-1, NULL, WNOHANG) == -1) && (errno == ECHILD))
             break;
 
-    free(vetPgid);
     exit(EXIT_SUCCESS); // Deveria ser em outro lugar?
 }
