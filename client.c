@@ -31,7 +31,10 @@ int  tamBuffer=0, executar=0, resistir=1;
 
 int main() {
     // Poe PID em uma string, para uso eventual
-    snprintf(pidLsh, 11, "%d", getpid());
+    if (snprintf(pidLsh, 11, "%d", getpid()) < 0) {
+        perror("Falha ao imprimir PID");
+        exit(EXIT_FAILURE);
+    }
 
     // Configura mascara para bloquear SIGINT
     sigset_t maskSigalrm;
@@ -70,7 +73,7 @@ int main() {
         // Tenta ler da entrada
         if (fgets(buff, MAX_LINHA, stdin) != NULL)
             if ((tamBuffer < MAX_BUFFER) &&
-                (sscanf(buff, " %[^\0,\n]", buffComandos[tamBuffer]) == 1))
+                (sscanf(buff, " %[^\n]", buffComandos[tamBuffer]) == 1))
                 tamBuffer++;
 
 
