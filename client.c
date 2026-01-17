@@ -70,7 +70,7 @@ int main() {
         // Tenta ler da entrada
         if (fgets(buff, MAX_LINHA, stdin) != NULL)
             if ((tamBuffer < MAX_BUFFER) &&
-                (sscanf(buff, " %[^\n]", buffComandos[tamBuffer]) == 1))
+                (sscanf(buff, " %[^\0,\n]", buffComandos[tamBuffer]) == 1))
                 tamBuffer++;
 
 
