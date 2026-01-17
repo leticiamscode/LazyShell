@@ -38,7 +38,7 @@ int main() {
     sigset_t maskSigint;
     if ((sigemptyset(&maskSigint) == -1) ||
         (sigaddset(&maskSigint, SIGINT) == -1)) {
-        perror("Falha ao construir mascara de sinais.\n");
+        perror("Falha ao construir mascara de sinais");
         exit(1);
     }
 
@@ -52,15 +52,15 @@ int main() {
     saSigint.sa_flags = saSigalrm.sa_flags = saSigchld.sa_flags = 0;
     if ((sigemptyset(&saSigint.sa_mask) == -1) ||
         (sigaction(SIGINT, &saSigint, NULL) == -1)) {
-        perror("Falha ao instalar tratador de SIGINT.\n");
+        perror("Falha ao instalar tratador de SIGINT");
         exit(EXIT_FAILURE);
     }
     if (sigaction(SIGALRM, &saSigalrm, NULL) == -1) {
-        perror("Falha ao instalar tratador de SIGALRM.\n");
+        perror("Falha ao instalar tratador de SIGALRM");
         exit(EXIT_FAILURE);
     }
     if (sigaction(SIGCHLD, &saSigchld, NULL) == -1) {
-        perror("Falha ao instalar tratador de SIGCHLD.\n");
+        perror("Falha ao instalar tratador de SIGCHLD");
         exit(EXIT_FAILURE);
     }
 
@@ -68,7 +68,7 @@ int main() {
     int  *vetPgid, maxPgid=MAX_PGID_DFL;
     vetPgid = malloc(sizeof(int) * maxPgid);
     if (vetPgid == NULL) {
-        perror("Falha ao alocar vetor de PGIDs.\n");
+        perror("Falha ao alocar vetor de PGIDs");
         exit(EXIT_FAILURE);
     }
 
@@ -114,14 +114,35 @@ void trataSigint(int signum) {
         executar = 1;
     }
     else { // So pode ser 0
-        if ((numFilhosVivos > 0) && (resistir == 1)) {
-            printf("%sNão posso morrer... sou lenta mas sou mãe de família!!!\n", linhaLsh);
-            resistir = 0;
-            alarm(3);
+        int pid = fork();
+        if (pid == -1) {     // Nao houve fork
+            perror("Falha ao procurar processos filhos (fork)");
+            exit(EXIT_FAILURE);
         }
-        else {
-            printf("%sOk... você venceu! Adeus!\n", linhaLsh);
-            exit(EXIT_SUCCESS);
+        else if (pid == 0) { // Processo filho
+            if (execlp("pgrep", "pgrep", "-A", "-c", "-s", "0", NULL) == -1) {
+                perror("Falha ao procurar processos filhos (exec)");
+                exit(EXIT_FAILURE);
+            }
+        }
+        else {               // Processo pai
+            int status;
+            if (waitpid(pid, &status, 0) == -1) {
+                perror("Falha ao procurar processos filhos (exec)");
+                exit(EXIT_FAILURE);
+            }
+            // lidar com caso em que processo eh sinalizado?
+
+            // Existem filhos vivos e a lsh pode resistir
+            if ((WEXITSTATUS(status) == 0) && (resistir == 1)) {
+                printf("%sNão posso morrer... sou lenta mas sou mãe de família!!!\n", linhaLsh);
+                resistir = 0;
+                alarm(3);
+            }
+            else {
+                printf("%sOk... você venceu! Adeus!\n", linhaLsh);
+                exit(EXIT_SUCCESS);
+            }
         }
     }
 }
