@@ -1,14 +1,22 @@
+/**
+ * @file client.c
+ * @author Rafael Vieira / Igor Bittencourt / Leticia Mariana
+ * @brief Arquivo principal da LSH.
+ * @copyright Copyright (c) 2025
+ * 
+ */
 #include "lsh.h"
 
+// Definição das Variáveis Globais 
 char pidLsh[12];
 char linhaLsh[6] = "lsh> ";
-int tamBuffer = 0;
-int executar = 0;
-int resistir = 1;
-int PGIDatual = -1;
+int tamBuffer = 0;  
+int executar = 0; 
+int resistir = 1;   
+int PGIDatual = -1; // Armazena o ID do grupo atual de execução
 
 int main() {
-    // Poe PID em uma string, para uso eventual
+    // Salva o PID em uma string, para uso eventual
     if (snprintf(pidLsh, 11, "%d", getpid()) < 0) {
         perror("Falha ao imprimir PID");
         exit(EXIT_FAILURE);
@@ -54,7 +62,7 @@ int main() {
         // Assinatura da lazy shell
         printf("%s", linhaLsh);
 
-        // Tenta ler da entrada
+        // Leitura de comandos
         if(fgets(buff, MAX_LINHA, stdin) != NULL){ 
             if ((tamBuffer < MAX_BUFFER) && sscanf(buff, " %[^\n]", buffComandos[tamBuffer]) == 1) {
                 // Copia pro buffer de comandos
@@ -102,7 +110,7 @@ int main() {
                 char* comando1[5] = {NULL, NULL, NULL, NULL, NULL}; // executavel + até 3 args + NULL
                 char* comando2[5] = {NULL, NULL, NULL, NULL, NULL}; // executavel + até 3 args + NULL
                 
-                // procurar pipe
+                // Verifica existência de Pipe
                 char *posPipe = strchr(buffComandos[i], '#');
                 if (posPipe != NULL) {
                     *posPipe = '\0';        // insere \0 no strComando1
@@ -164,7 +172,7 @@ int main() {
 
             resistir = 1; // Primeiro, para SIGINT nao ativar o encerramento
             tamBuffer = 0; // Segundo, para SIGINT nao reativar a execucao
-            executar = 0;
+            executar = 0;  // Desativa a flag de execução
 
             // Reseta o valor de PGIDatual, além de matar o processo
             // representante desse grupo, agora que já foi executado
