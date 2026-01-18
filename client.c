@@ -17,7 +17,7 @@ void trataSigint(int signum);
 
 void trataSigalrm(int signum);
 
-void trataSigchld(int signum);
+void trataSigterm(int signum);
 
 void comandoWait();
 
@@ -37,19 +37,20 @@ int main() {
     }
 
     // Configura mascara para bloquear SIGINT
-    sigset_t maskSigalrm;
-    if ((sigemptyset(&maskSigalrm) == -1) ||
-        (sigaddset(&maskSigalrm, SIGINT) == -1)) {
+    sigset_t maskSigint;
+    if ((sigemptyset(&maskSigint) == -1) ||
+        (sigaddset(&maskSigint, SIGINT) == -1)) {
         perror("Falha ao construir mascara de sinais");
         exit(EXIT_FAILURE);
     }
 
-    // Configura tratadores para SIGINT e SIGALRM
-    // O tratador de SIGALRM deve bloquear SIGINT
-    struct sigaction saSigint, saSigalrm;
+    // Configura tratadores para SIGINT, SIGALRM e SIGTERM
+    // Os tratadores de SIGALRM e SIGTERM devem bloquear SIGINT
+    struct sigaction saSigint, saSigalrm, saSigterm;
     saSigint.sa_handler = &trataSigint;
     saSigalrm.sa_handler = &trataSigalrm;
-    saSigalrm.sa_mask = maskSigalrm;
+    saSigterm.sa_handler = &trataSigterm;
+    saSigalrm.sa_mask = saSigterm.sa_mask = maskSigint;
     saSigint.sa_flags = saSigalrm.sa_flags = 0;
     if ((sigemptyset(&saSigint.sa_mask) == -1) ||
         (sigaction(SIGINT, &saSigint, NULL) == -1)) {
@@ -58,6 +59,10 @@ int main() {
     }
     if (sigaction(SIGALRM, &saSigalrm, NULL) == -1) {
         perror("Falha ao instalar tratador de SIGALRM");
+        exit(EXIT_FAILURE);
+    }
+    if (sigaction(SIGTERM, &saSigterm, NULL) == -1) {
+        perror("Falha ao instalar tratador de SIGTERM");
         exit(EXIT_FAILURE);
     }
 
@@ -135,7 +140,10 @@ void trataSigint(int signum) {
             perror("Falha ao procurar processos filhos (wait)");
             exit(EXIT_FAILURE);
         }
-        // lidar com caso em que processo eh sinalizado?
+        if (!WIFEXITED(status)) {
+            perror("Falha ao procurar processos filhos (signal)");
+            exit(EXIT_FAILURE);
+        }
 
         // Existem filhos vivos e a lsh pode resistir
         if ((WEXITSTATUS(status) == 0) && (resistir == 1)) {
@@ -153,6 +161,18 @@ void trataSigint(int signum) {
 void trataSigalrm(int signum) {
     printf("\n"); // Para separar a proxima linhaLsh
     resistir = 1;
+}
+
+void trataSigterm(int signum) {
+    if (kill(0, SIGTERM) == -1) {
+        perror("Falha ao matar grupo de processos");
+        exit(EXIT_FAILURE);
+    }
+
+    // Liberando todos os processos filhos
+    while ((wait(NULL) != -1) || (errno != ECHILD));
+
+    exit(EXIT_SUCCESS);
 }
 
 void comandoWait() {
@@ -193,6 +213,7 @@ void comandoExit() {
         close(fd[1]);
         
         // Execucao de pkill para matar filhos vivos da lsh
+        // Os filhos que receberem o sinal (SIGTERM) matarao seus filhos, se houver
         if (execlp("pkill", "pkill", "-P", pidLsh, NULL) == -1) {
             perror("Falha ao matar processos filhos (exec)");
             exit(EXIT_FAILURE);
@@ -203,12 +224,9 @@ void comandoExit() {
         perror("Falha ao matar processos filhos (wait)");
         exit(EXIT_FAILURE);
     }
-    // lidar com caso em que processo eh sinalizado?
 
     // Liberando todos os processos filhos
-    while (1)
-        if ((waitpid(-1, NULL, WNOHANG) == -1) && (errno == ECHILD))
-            break;
+    while ((wait(NULL) != -1) || (errno != ECHILD));
 
     exit(EXIT_SUCCESS); // Deveria ser em outro lugar?
 }
