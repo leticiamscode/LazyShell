@@ -29,7 +29,8 @@ void comandoWait();
 
 void comandoExit();
 
-void comandoExterno(char **comando1, char **comando2, char *strComando2);
+void comandoExternoUnico(char **comando1);
+void comandoExternoPipe(char **comando1, char **comando2);
 
 
 
@@ -139,7 +140,12 @@ int main() {
                     comandoExit();
 
                 } else {
-                    comandoExterno(comando1, comando2, strComando2);
+                    // Quando strComando2 possui valor, significa existência de pipe/segundo comando
+                    if (strComando2 != NULL) {
+                        comandoExternoPipe(comando1, comando2);
+                    } else {
+                        comandoExternoUnico(comando1);
+                    }
                 }
             }
 
@@ -294,29 +300,14 @@ void comandoExit() {
     exit(EXIT_SUCCESS); // Deveria ser em outro lugar?
 }
 
-void comandoExterno(char **comando1, char **comando2, char *strComando2){
+void comandoExternoUnico(char **comando1){
     // Função de DEBUG para listar/imprimir os argumentos separadamente
     // for (int i=0; i<5; i++) printf("arg %d: '%s'\n", i, comando1[i]);
-    // for (int i=0; i<5; i++) printf("arg %d: '%s'\n", i, comando2[i]);
 
     // Se o elemento de índice 4 foi alterado de NULL, significa que excedeu o limite de argumentos
-    if ((comando1[4] != (char *) NULL) || (comando2[4] != (char *) NULL)){
+    if (comando1[4] != (char *) NULL){
         printf("\tERRO: Comando com mais de 3 argumentos.\n");
         return;
-    }
-
-    // Variável/Flag pra facilitar o uso de pipe
-    int temPipe = 0;
-
-    int fd[2];
-    if (strComando2 != NULL){
-        temPipe = 1;
-
-        int ret = pipe(fd);
-        if (ret == -1){
-            printf("Erro ao criar pipe.\n");
-            exit(EXIT_FAILURE);
-        }
     }
 
     int pid = fork();
@@ -328,52 +319,102 @@ void comandoExterno(char **comando1, char **comando2, char *strComando2){
         // Código do pai, mudará o GPID do filho e criará um pipe
         // para o segundo filho, se necessário
 
-        if (temPipe){
-            int pid2 = fork();
+        // Pai (a lsh) não precisa mais fazer nada?
 
-            if (pid2 < 0){
-                printf("Erro ao fazer fork.\n");
-                exit(EXIT_FAILURE);
-            } else if (pid2 > 0) {
-                // Código do pai, mudará o GPID do segundo filho
+    } else {
+        // Código do primeiro filho, aqui será tratado o
+        // pipe e então chamado o comando exec
 
-                // Fecha os descritores do pipe no pai
-                close(fd[0]);
-                close(fd[1]);
+        if (execvp(comando1[0], comando1) == -1){
+            perror("Erro ao executar exec");
+            // Tem que tratar com o errno, e provavelmente tratar o segundo filho (se tiver)
+        }
+    }
+}
 
-            } else {
-                // Código do segundo filho, trata
-                // o pipe e chama o exec
+void comandoExternoPipe(char **comando1, char **comando2){
+    // Função de DEBUG para listar/imprimir os argumentos separadamente
+    // for (int i=0; i<5; i++) printf("arg %d: '%s'\n", i, comando1[i]);
+    // for (int i=0; i<5; i++) printf("arg %d: '%s'\n", i, comando2[i]);
 
-                // Fecha o descritor de escrita, já que esse filho apenas lê
-                close(fd[1]);
+    // Se o elemento de índice 4 foi alterado de NULL, significa que excedeu o limite de argumentos
+    if ((comando1[4] != (char *) NULL) || (comando2[4] != (char *) NULL)){
+        printf("\tERRO: Comando com mais de 3 argumentos.\n");
+        return;
+    }
 
-                // Redireciona a entrada do filho para a saída do pipe
-                dup2(fd[0], 0);
-                close(fd[0]);
+    int fd[2];
 
-                if (execvp(comando2[0], comando2) == -1){
-                    perror("Erro ao executar exec");
-                    // Tem que tratar com o errno, e provavelmente tratar o primeiro filho
+    int ret = pipe(fd);
+    if (ret == -1){
+        printf("Erro ao criar pipe.\n");
+        exit(EXIT_FAILURE);
+    }
 
+    int pid1 = fork();
+
+    if (pid1 < 0){
+        printf("Erro ao fazer fork.\n");
+        exit(EXIT_FAILURE);
+    } else if (pid1 > 0) {
+        // Código do pai, criará um pipe para o segundo filho
+        int pid2 = fork();
+
+        if (pid2 < 0){
+            printf("Erro ao fazer fork.\n");
+            exit(EXIT_FAILURE);
+        } else if (pid2 > 0) {
+            // Código do pai, mudará o GPID do segundo filho
+
+            // Fecha os descritores do pipe no pai
+            close(fd[0]);
+            close(fd[1]);
+
+            int wstatus;
+            waitpid(-1, &wstatus, WUNTRACED);
+
+            if (WIFEXITED(wstatus)){
+                if (WEXITSTATUS(wstatus) == EXIT_FAILURE){
+                    kill(pid1, SIGKILL);
+                    kill(pid2, SIGKILL);
+
+                    printf("DEBUG: Recebeu erro, matando filhos\n");
+                    // Tem chance de algum exec retornar EXIT_SUCCESS antes do outro dar erro?
                 }
+            }
+
+        } else {
+            // Código do segundo filho, trata
+            // o pipe e chama o exec
+
+            // Fecha o descritor de escrita, já que esse filho apenas lê
+            close(fd[1]);
+
+            // Redireciona a entrada do filho para a saída do pipe
+            dup2(fd[0], 0);
+            close(fd[0]);
+
+            if (execvp(comando2[0], comando2) == -1){
+                perror("Erro ao executar segundo exec");
+                exit(EXIT_FAILURE);
+                // Tem que tratar com o errno, e provavelmente tratar o primeiro filho
+
             }
         }
     } else {
         // Código do primeiro filho, aqui será tratado o
         // pipe e então chamado o comando exec
 
-        if (temPipe){
-            // Fecha o descritor de leitura, já que esse filho apenas escreve
-            close(fd[0]);
+        // Fecha o descritor de leitura, já que esse filho apenas escreve
+        close(fd[0]);
 
-            // Redireciona a saída do filho para a entrada do pipe
-            dup2(fd[1], 1);
-            close(fd[1]);
-        }
+        // Redireciona a saída do filho para a entrada do pipe
+        dup2(fd[1], 1);
+        close(fd[1]);
 
         if (execvp(comando1[0], comando1) == -1){
-            perror("Erro ao executar exec");
+            perror("Erro ao executar primeiro exec");
+            exit(EXIT_FAILURE);
             // Tem que tratar com o errno, e provavelmente tratar o segundo filho (se tiver)
         }
     }
