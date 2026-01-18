@@ -157,18 +157,14 @@ void comandoExternoUnico(char **comando1){
         printf("Erro ao fazer fork.\n");
         exit(EXIT_FAILURE);
     } else if (pid > 0) {
-        // Código do pai, mudará o GPID do filho e criará um pipe
-        // para o segundo filho, se necessário
-        
-        if (PGIDatual == -1) PGIDatual = pid;
+        // Pai (lsh)
     } else {
         // Código do primeiro filho, aqui será tratado o
         // pipe e então chamado o comando exec
 
-        // Quando o pai não tem nenhum PGID salvo, significa que esse processo é o primeiro filho
-        // Caso o pai tenha um PGID salvo, seta o PGID desse processo para o salvo (herdado do pai)
-        if (PGIDatual == -1) setpgid(0, 0);
-        else setpgid(0, PGIDatual);
+        // Muda o próprio PGID para o PGIDatual desse grupo de execução,
+        // definido pelo processo representante criado antes do loop
+        setpgid(0, PGIDatual);
 
         if (execvp(comando1[0], comando1) == -1){
             perror("Erro ao executar exec");
@@ -186,17 +182,14 @@ void comandoExternoPipe(char **comando1, char **comando2){
         printf("Erro ao fazer fork.\n");
         exit(EXIT_FAILURE);
     } else if (pidCriador > 0){
-        // Pai (lsh), salva o PGID caso seja o primeiro criado
-        if (PGIDatual == -1) PGIDatual = pidCriador;
-        
+        // Pai (lsh)
     } else {
         // Filho "criador", que irá criar os execs
-        
-        // Quando o pai não tem nenhum PGID salvo, significa que esse processo é o primeiro filho
-        // Caso o pai tenha um PGID salvo, seta o PGID desse processo para o salvo (herdado do pai)
-        if (PGIDatual == -1) setpgid(0, 0);
-        else setpgid(0, PGIDatual);
 
+        // Muda o próprio PGID para o PGIDatual desse grupo de execução,
+        // definido pelo processo representante criado antes do loop
+        setpgid(0, PGIDatual);
+        
         // Se o elemento de índice 4 foi alterado de NULL, significa que excedeu o limite de argumentos
         if ((comando1[4] != (char *) NULL) || (comando2[4] != (char *) NULL)){
             printf("\tERRO: Comando com mais de 3 argumentos.\n");
@@ -218,8 +211,6 @@ void comandoExternoPipe(char **comando1, char **comando2){
             exit(EXIT_FAILURE);
         } else if (pid1 > 0) {
             // Código do pai, criará um pipe para o segundo filho
-
-            if (PGIDatual == -1) PGIDatual = pid1;
 
             int pid2 = fork();
 

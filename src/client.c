@@ -65,6 +65,32 @@ int main() {
 
         // Executa os comandos armazenados
         if (executar == 1) {
+            // Para cada "grupo de comandos" do buffer, é criado antecipadamente um processo "representante",
+            // que servirá como mantenedor do Process Group desses comandos, provendo o PGID a ser usado por eles
+            int pidRepresentanteGrupo = fork();
+
+            if (pidRepresentanteGrupo < 0){
+                perror("Falha ao criar representante pra execução do buffer (fork)");
+                exit(EXIT_FAILURE);
+            } else if (pidRepresentanteGrupo == 0){
+                // Representante do grupo, cria o PGID e deve permanecer vivo  até todos
+                // os comandos serem iniciados, então eles mesmos manterão o grupo
+
+                // Cria o grupo (PGID) a partir de seu próprio PID
+                setpgid(0, 0);
+
+                // Permanece vivo por 1 segundo, tempo suficiente para os comandos iniciarem
+                sleep(1);
+
+                // Finaliza com sucesso
+                exit(EXIT_SUCCESS);
+            } else {
+                // Processo pai (lsh), salva o PGID do representante
+                // na variável global PGIDatual pela duração do loop
+
+                PGIDatual = pidRepresentanteGrupo;
+            }
+
             for (int i = 0; i < tamBuffer; i++) {
                 // Cancela qualquer alarme, que poderia interromper a execução dos filhos
                 alarm(0);
@@ -140,7 +166,12 @@ int main() {
             tamBuffer = 0; // Segundo, para SIGINT nao reativar a execucao
             executar = 0;
 
+            // Reseta o valor de PGIDatual, além de matar o processo
+            // representante desse grupo, agora que já foi executado
             PGIDatual = -1;
+
+            kill(pidRepresentanteGrupo, SIGKILL);
+            waitpid(pidRepresentanteGrupo, NULL, WUNTRACED);
         }
     }
 
