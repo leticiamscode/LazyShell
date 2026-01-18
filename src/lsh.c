@@ -155,7 +155,7 @@ void comandoExternoUnico(char **comando1){
 
     // Se o elemento de índice 4 foi alterado de NULL, significa que excedeu o limite de argumentos
     if (comando1[4] != (char *) NULL){
-        printf("\tERRO: Comando com mais de 3 argumentos.\n");
+        printf("ERRO: Comando com mais de 3 argumentos.\n");
         return;
     }
 
@@ -200,22 +200,25 @@ void comandoExternoPipe(char **comando1, char **comando2){
         
         // Se o elemento de índice 4 foi alterado de NULL, significa que excedeu o limite de argumentos
         if ((comando1[4] != (char *) NULL) || (comando2[4] != (char *) NULL)){
-            printf("\tERRO: Comando com mais de 3 argumentos.\n");
-            return;
+            printf("ERRO: Comando com mais de 3 argumentos.\n");
+            exit(EXIT_FAILURE);
+        } else if ((strcmp(comando2[0], "cd") == 0) || (strcmp(comando2[0], "wait") == 0) || (strcmp(comando2[0], "exit") == 0)){
+            printf("ERRO: Segundo comando não pode ser comando interno.\n");
+            exit(EXIT_FAILURE);
         }
 
         int fd[2];
 
         int ret = pipe(fd);
         if (ret == -1){
-            printf("Erro ao criar pipe.\n");
+            perror("Erro ao criar pipe");
             exit(EXIT_FAILURE);
         }
 
         int pid1 = fork();
 
         if (pid1 < 0){
-            printf("Erro ao fazer fork.\n");
+            perror("Erro ao fazer fork do primeiro comando");
             exit(EXIT_FAILURE);
         } else if (pid1 > 0) {
             // Código do pai, criará um pipe para o segundo filho
@@ -223,7 +226,7 @@ void comandoExternoPipe(char **comando1, char **comando2){
             int pid2 = fork();
 
             if (pid2 < 0){
-                printf("Erro ao fazer fork.\n");
+                perror("Erro ao fazer fork do segundo comando");
                 exit(EXIT_FAILURE);
             } else if (pid2 > 0) {
                 // Código do pai, mudará o GPID do segundo filho
@@ -258,7 +261,7 @@ void comandoExternoPipe(char **comando1, char **comando2){
                 close(fd[0]);
 
                 if (execvp(comando2[0], comando2) == -1){
-                    perror("Erro ao executar segundo exec");
+                    perror("Erro ao fazer exec do segundo comando");
                     exit(EXIT_FAILURE);
                     // Tem que tratar com o errno, e provavelmente tratar o primeiro filho
 
@@ -276,7 +279,7 @@ void comandoExternoPipe(char **comando1, char **comando2){
             close(fd[1]);
 
             if (execvp(comando1[0], comando1) == -1){
-                perror("Erro ao executar primeiro exec");
+                perror("Erro ao fazer exec do primeiro comando");
                 exit(EXIT_FAILURE);
                 // Tem que tratar com o errno, e provavelmente tratar o segundo filho (se tiver)
             }

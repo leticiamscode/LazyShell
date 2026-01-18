@@ -110,11 +110,15 @@ int main() {
                 char* comando1[5] = {NULL, NULL, NULL, NULL, NULL}; // executavel + até 3 args + NULL
                 char* comando2[5] = {NULL, NULL, NULL, NULL, NULL}; // executavel + até 3 args + NULL
                 
-                // Verifica existência de Pipe
+                
+                // Verifica existência de Pipe, e seta a flag temPipe apropriadamente
+                int temPipe = 0;
+
                 char *posPipe = strchr(buffComandos[i], '#');
                 if (posPipe != NULL) {
                     *posPipe = '\0';        // insere \0 no strComando1
                     strComando2 = posPipe + 1;  // posicao inicio do segundo comando
+                    temPipe = 1;
                 }
 
                 // Separa por espaços para preencher o vetor comando1
@@ -137,29 +141,34 @@ int main() {
                 }
 
                 if (strcmp(comando1[0], "cd") == 0){
-                    if (comando1[2] != NULL){ // Mais de 1 argumento, cd inválido
+                    if (temPipe){ // Tentativa de pipe, cd inválido
+                        printf("Erro no cd: pipe não é permitido\n");
+                    } else if (comando1[2] != NULL){ // Mais de 1 argumento, cd inválido
                         printf("Erro no cd: espera-se apenas 1 argumento\n");
                     } else { // 1 argumento ou menos, aceitável para o chdir()
                         comandoCd(comando1[1]);
                     }
 
                 } else if (strcmp(comando1[0], "wait") == 0){
-                    if (comando1[1] != NULL){ // Possui argumento, wait inválido
+                    if (temPipe){ // Tentativa de pipe, wait inválido
+                        printf("Erro no wait: pipe não é permitido\n");
+                    } else if (comando1[1] != NULL){ // Possui argumento, wait inválido
                         printf("Erro no wait: não deve receber nenhum argumento\n");
                     } else { // Nenhum argumento, aceitável para o comando wait
                         comandoWait();
                     }
 
                 } else if (strcmp(comando1[0], "exit") == 0){
-                    if (comando1[1] != NULL){ // Possui argumento, exit inválido
+                    if (temPipe){ // Tentativa de pipe, exit inválido
+                        printf("Erro no exit: pipe não é permitido\n");
+                    } else if (comando1[1] != NULL){ // Possui argumento, exit inválido
                         printf("Erro no exit: não deve receber nenhum argumento\n");
                     } else { // Nenhum argumento, aceitável para o comando exit
                         comandoExit();
                     }
 
                 } else {
-                    // Quando strComando2 possui valor, significa existência de pipe/segundo comando
-                    if (strComando2 != NULL) {
+                    if (temPipe) {
                         comandoExternoPipe(comando1, comando2);
                     } else {
                         comandoExternoUnico(comando1);
