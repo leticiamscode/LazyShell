@@ -144,7 +144,23 @@ int main() {
                 } else {
                     // Quando strComando2 possui valor, significa existência de pipe/segundo comando
                     if (strComando2 != NULL) {
-                        comandoExternoPipe(comando1, comando2);
+                        int pidCriador = fork();
+
+                        if (pidCriador < 0){
+                            printf("Erro ao fazer fork.\n");
+                            exit(EXIT_FAILURE);
+                        } else if (pidCriador == 0){
+                            // Filho que irá criar os execs
+
+                            if (PGIDatual == -1) setpgid(0, 0);
+                            else setpgid(0, PGIDatual);
+
+                            comandoExternoPipe(comando1, comando2);
+                        } else {
+                            // Pai (lsh), salva o PGID caso seja o primeiro criado
+
+                            if (PGIDatual == -1) PGIDatual = pidCriador;
+                        }
                     } else {
                         comandoExternoUnico(comando1);
                     }
@@ -324,10 +340,14 @@ void comandoExternoUnico(char **comando1){
         // para o segundo filho, se necessário
         
         if (PGIDatual == -1) PGIDatual = pid;
-        setpgid(pid, PGIDatual);
     } else {
         // Código do primeiro filho, aqui será tratado o
         // pipe e então chamado o comando exec
+
+        // Quando o pai não havia nenhum PGID salvo, significa que esse processo é o primeiro filho
+        // Caso o pai tenha um PGID salvo, seta o PGID desse processo para o salvo (herdado do pai)
+        if (PGIDatual == -1) setpgid(0, 0);
+        else setpgid(0, PGIDatual);
 
         if (execvp(comando1[0], comando1) == -1){
             perror("Erro ao executar exec");
@@ -364,7 +384,6 @@ void comandoExternoPipe(char **comando1, char **comando2){
         // Código do pai, criará um pipe para o segundo filho
 
         if (PGIDatual == -1) PGIDatual = pid1;
-        setpgid(pid1, PGIDatual);
 
         int pid2 = fork();
 
@@ -373,8 +392,6 @@ void comandoExternoPipe(char **comando1, char **comando2){
             exit(EXIT_FAILURE);
         } else if (pid2 > 0) {
             // Código do pai, mudará o GPID do segundo filho
-
-            setpgid(pid2, PGIDatual);
 
             // Fecha os descritores do pipe no pai
             close(fd[0]);
@@ -393,6 +410,7 @@ void comandoExternoPipe(char **comando1, char **comando2){
                 }
             }
 
+            exit(EXIT_SUCCESS);
         } else {
             // Código do segundo filho, trata
             // o pipe e chama o exec
@@ -414,7 +432,7 @@ void comandoExternoPipe(char **comando1, char **comando2){
     } else {
         // Código do primeiro filho, aqui será tratado o
         // pipe e então chamado o comando exec
-
+        
         // Fecha o descritor de leitura, já que esse filho apenas escreve
         close(fd[0]);
 
