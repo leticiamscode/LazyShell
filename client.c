@@ -144,23 +144,7 @@ int main() {
                 } else {
                     // Quando strComando2 possui valor, significa existência de pipe/segundo comando
                     if (strComando2 != NULL) {
-                        int pidCriador = fork();
-
-                        if (pidCriador < 0){
-                            printf("Erro ao fazer fork.\n");
-                            exit(EXIT_FAILURE);
-                        } else if (pidCriador == 0){
-                            // Filho que irá criar os execs
-
-                            if (PGIDatual == -1) setpgid(0, 0);
-                            else setpgid(0, PGIDatual);
-
-                            comandoExternoPipe(comando1, comando2);
-                        } else {
-                            // Pai (lsh), salva o PGID caso seja o primeiro criado
-
-                            if (PGIDatual == -1) PGIDatual = pidCriador;
-                        }
+                        comandoExternoPipe(comando1, comando2);
                     } else {
                         comandoExternoUnico(comando1);
                     }
@@ -344,7 +328,7 @@ void comandoExternoUnico(char **comando1){
         // Código do primeiro filho, aqui será tratado o
         // pipe e então chamado o comando exec
 
-        // Quando o pai não havia nenhum PGID salvo, significa que esse processo é o primeiro filho
+        // Quando o pai não tem nenhum PGID salvo, significa que esse processo é o primeiro filho
         // Caso o pai tenha um PGID salvo, seta o PGID desse processo para o salvo (herdado do pai)
         if (PGIDatual == -1) setpgid(0, 0);
         else setpgid(0, PGIDatual);
@@ -357,93 +341,111 @@ void comandoExternoUnico(char **comando1){
 }
 
 void comandoExternoPipe(char **comando1, char **comando2){
-    // Função de DEBUG para listar/imprimir os argumentos separadamente
-    // for (int i=0; i<5; i++) printf("arg %d: '%s'\n", i, comando1[i]);
-    // for (int i=0; i<5; i++) printf("arg %d: '%s'\n", i, comando2[i]);
+    int pidCriador = fork();
 
-    // Se o elemento de índice 4 foi alterado de NULL, significa que excedeu o limite de argumentos
-    if ((comando1[4] != (char *) NULL) || (comando2[4] != (char *) NULL)){
-        printf("\tERRO: Comando com mais de 3 argumentos.\n");
-        return;
-    }
-
-    int fd[2];
-
-    int ret = pipe(fd);
-    if (ret == -1){
-        printf("Erro ao criar pipe.\n");
-        exit(EXIT_FAILURE);
-    }
-
-    int pid1 = fork();
-
-    if (pid1 < 0){
+    if (pidCriador < 0){
         printf("Erro ao fazer fork.\n");
         exit(EXIT_FAILURE);
-    } else if (pid1 > 0) {
-        // Código do pai, criará um pipe para o segundo filho
+    } else if (pidCriador > 0){
+        // Pai (lsh), salva o PGID caso seja o primeiro criado
+        if (PGIDatual == -1) PGIDatual = pidCriador;
+        
+    } else {
+        // Filho "criador", que irá criar os execs
+        
+        // Quando o pai não tem nenhum PGID salvo, significa que esse processo é o primeiro filho
+        // Caso o pai tenha um PGID salvo, seta o PGID desse processo para o salvo (herdado do pai)
+        if (PGIDatual == -1) setpgid(0, 0);
+        else setpgid(0, PGIDatual);
 
-        if (PGIDatual == -1) PGIDatual = pid1;
+        // Função de DEBUG para listar/imprimir os argumentos separadamente
+        // for (int i=0; i<5; i++) printf("arg %d: '%s'\n", i, comando1[i]);
+        // for (int i=0; i<5; i++) printf("arg %d: '%s'\n", i, comando2[i]);
 
-        int pid2 = fork();
+        // Se o elemento de índice 4 foi alterado de NULL, significa que excedeu o limite de argumentos
+        if ((comando1[4] != (char *) NULL) || (comando2[4] != (char *) NULL)){
+            printf("\tERRO: Comando com mais de 3 argumentos.\n");
+            return;
+        }
 
-        if (pid2 < 0){
+        int fd[2];
+
+        int ret = pipe(fd);
+        if (ret == -1){
+            printf("Erro ao criar pipe.\n");
+            exit(EXIT_FAILURE);
+        }
+
+        int pid1 = fork();
+
+        if (pid1 < 0){
             printf("Erro ao fazer fork.\n");
             exit(EXIT_FAILURE);
-        } else if (pid2 > 0) {
-            // Código do pai, mudará o GPID do segundo filho
+        } else if (pid1 > 0) {
+            // Código do pai, criará um pipe para o segundo filho
 
-            // Fecha os descritores do pipe no pai
-            close(fd[0]);
-            close(fd[1]);
+            if (PGIDatual == -1) PGIDatual = pid1;
 
-            int wstatus;
-            waitpid(-1, &wstatus, WUNTRACED);
+            int pid2 = fork();
 
-            if (WIFEXITED(wstatus)){
-                if (WEXITSTATUS(wstatus) == EXIT_FAILURE){
-                    kill(pid1, SIGKILL);
-                    kill(pid2, SIGKILL);
+            if (pid2 < 0){
+                printf("Erro ao fazer fork.\n");
+                exit(EXIT_FAILURE);
+            } else if (pid2 > 0) {
+                // Código do pai, mudará o GPID do segundo filho
 
-                    printf("DEBUG: Recebeu erro, matando filhos\n");
-                    // Tem chance de algum exec retornar EXIT_SUCCESS antes do outro dar erro?
+                // Fecha os descritores do pipe no pai
+                close(fd[0]);
+                close(fd[1]);
+
+                int wstatus;
+                waitpid(-1, &wstatus, WUNTRACED);
+
+                if (WIFEXITED(wstatus)){
+                    if (WEXITSTATUS(wstatus) == EXIT_FAILURE){
+                        kill(pid1, SIGKILL);
+                        kill(pid2, SIGKILL);
+
+                        printf("DEBUG: Recebeu erro, matando filhos\n");
+                        // Tem chance de algum exec retornar EXIT_SUCCESS antes do outro dar erro?
+                    }
+                }
+
+                exit(EXIT_SUCCESS);
+            } else {
+                // Código do segundo filho, trata
+                // o pipe e chama o exec
+
+                // Fecha o descritor de escrita, já que esse filho apenas lê
+                close(fd[1]);
+
+                // Redireciona a entrada do filho para a saída do pipe
+                dup2(fd[0], 0);
+                close(fd[0]);
+
+                if (execvp(comando2[0], comando2) == -1){
+                    perror("Erro ao executar segundo exec");
+                    exit(EXIT_FAILURE);
+                    // Tem que tratar com o errno, e provavelmente tratar o primeiro filho
+
                 }
             }
-
-            exit(EXIT_SUCCESS);
         } else {
-            // Código do segundo filho, trata
-            // o pipe e chama o exec
-
-            // Fecha o descritor de escrita, já que esse filho apenas lê
-            close(fd[1]);
-
-            // Redireciona a entrada do filho para a saída do pipe
-            dup2(fd[0], 0);
+            // Código do primeiro filho, aqui será tratado o
+            // pipe e então chamado o comando exec
+            
+            // Fecha o descritor de leitura, já que esse filho apenas escreve
             close(fd[0]);
 
-            if (execvp(comando2[0], comando2) == -1){
-                perror("Erro ao executar segundo exec");
+            // Redireciona a saída do filho para a entrada do pipe
+            dup2(fd[1], 1);
+            close(fd[1]);
+
+            if (execvp(comando1[0], comando1) == -1){
+                perror("Erro ao executar primeiro exec");
                 exit(EXIT_FAILURE);
-                // Tem que tratar com o errno, e provavelmente tratar o primeiro filho
-
+                // Tem que tratar com o errno, e provavelmente tratar o segundo filho (se tiver)
             }
-        }
-    } else {
-        // Código do primeiro filho, aqui será tratado o
-        // pipe e então chamado o comando exec
-        
-        // Fecha o descritor de leitura, já que esse filho apenas escreve
-        close(fd[0]);
-
-        // Redireciona a saída do filho para a entrada do pipe
-        dup2(fd[1], 1);
-        close(fd[1]);
-
-        if (execvp(comando1[0], comando1) == -1){
-            perror("Erro ao executar primeiro exec");
-            exit(EXIT_FAILURE);
-            // Tem que tratar com o errno, e provavelmente tratar o segundo filho (se tiver)
         }
     }
 }
