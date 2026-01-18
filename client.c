@@ -38,6 +38,8 @@ void comandoExternoPipe(char **comando1, char **comando2);
 char pidLsh[12], linhaLsh[6]="lsh> ";
 int  tamBuffer=0, executar=0, resistir=1;
 
+int PGIDatual = -1;
+
 int main() {
     // Poe PID em uma string, para uso eventual
     if (snprintf(pidLsh, 11, "%d", getpid()) < 0) {
@@ -152,6 +154,8 @@ int main() {
             resistir = 1; // Primeiro, para SIGINT nao ativar o encerramento
             tamBuffer = 0; // Segundo, para SIGINT nao reativar a execucao
             executar = 0;
+
+            PGIDatual = -1;
         }
     }
 
@@ -192,7 +196,7 @@ void trataSigint(int signum) {
             close(fd[1]);
             
             // Execucao de pgrep para encontrar filhos vivos da lsh
-            if (execlp("pgrep", "pgrep", "-P", pidLsh, NULL) == -1) {
+            if (execlp("pgrep", "pgrep", "-P", pidLsh, "-r", "R,S,D,T", NULL) == -1) {
                 perror("Falha ao procurar processos filhos (exec)");
                 exit(EXIT_FAILURE);
             }
@@ -311,16 +315,16 @@ void comandoExternoUnico(char **comando1){
     }
 
     int pid = fork();
-
+    
     if (pid < 0){
         printf("Erro ao fazer fork.\n");
         exit(EXIT_FAILURE);
     } else if (pid > 0) {
         // Código do pai, mudará o GPID do filho e criará um pipe
         // para o segundo filho, se necessário
-
-        // Pai (a lsh) não precisa mais fazer nada?
-
+        
+        if (PGIDatual == -1) PGIDatual = pid;
+        setpgid(pid, PGIDatual);
     } else {
         // Código do primeiro filho, aqui será tratado o
         // pipe e então chamado o comando exec
@@ -358,6 +362,10 @@ void comandoExternoPipe(char **comando1, char **comando2){
         exit(EXIT_FAILURE);
     } else if (pid1 > 0) {
         // Código do pai, criará um pipe para o segundo filho
+
+        if (PGIDatual == -1) PGIDatual = pid1;
+        setpgid(pid1, PGIDatual);
+
         int pid2 = fork();
 
         if (pid2 < 0){
@@ -365,6 +373,8 @@ void comandoExternoPipe(char **comando1, char **comando2){
             exit(EXIT_FAILURE);
         } else if (pid2 > 0) {
             // Código do pai, mudará o GPID do segundo filho
+
+            setpgid(pid2, PGIDatual);
 
             // Fecha os descritores do pipe no pai
             close(fd[0]);
