@@ -2,7 +2,7 @@
  * @file client.c
  * @author Rafael Vieira / Igor Bittencourt / Leticia Mariana
  * @brief Arquivo principal da LSH.
- * @copyright Copyright (c) 2025
+ * @copyright Copyright (c) 2026
  * 
  */
 #include "lsh.h"
