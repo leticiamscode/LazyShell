@@ -233,11 +233,8 @@ void trataSigterm(int signum) {
 }
 
 void comandoCd(char *arg){
-    char *caminho = {".."};
-    if (arg != NULL) caminho = arg;
-
-    if (chdir(caminho) == -1){
-        printf("DEBUG: tratar o errno?\n");
+    if (chdir(arg) == -1){
+        perror("Erro ao executar cd");
     }
 }
 
@@ -356,7 +353,7 @@ void comandoExterno(char **comando1, char **comando2, char *strComando2){
                 close(fd[0]);
 
                 if (execvp(comando2[0], comando2) == -1){
-                    printf("\tErro no exec.\n");
+                    perror("Erro ao executar exec");
                     // Tem que tratar com o errno, e provavelmente tratar o primeiro filho
 
                 }
@@ -376,9 +373,7 @@ void comandoExterno(char **comando1, char **comando2, char *strComando2){
         }
 
         if (execvp(comando1[0], comando1) == -1){
-            printf("\tErro no exec.\n");
-
-            printf("DEBUG: errno do exec=%d\n", errno);
+            perror("Erro ao executar exec");
             // Tem que tratar com o errno, e provavelmente tratar o segundo filho (se tiver)
         }
     }
