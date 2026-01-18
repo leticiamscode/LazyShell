@@ -2,7 +2,7 @@
  * @file lsh.c
  * @author Rafael Vieira / Igor Bittencourt / Leticia Mariana
  * @brief Implementação das funções auxiliares da LSH.
- * @copyright Copyright (c) 2025
+ * @copyright Copyright (c) 2026
  * 
  */
 
