@@ -2,7 +2,7 @@
  * @file lsh.h
  * @author Rafael Vieira / Igor Bittencourt / Leticia Mariana
  * @brief Definição das funções auxiliares da LSH.
- * @copyright Copyright (c) 2025
+ * @copyright Copyright (c) 2026
  * 
  */
 
