@@ -4,12 +4,16 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <string.h>
+#include <errno.h>
 
 // Constantes
 #define MAX_LINHA 1000
 #define MAX_BUFFER 5
 #define MAX_ARGS 3
 
+
+#define WHITESPACES " \n\t" // Whitespaces usados como delimitadores do strtok()
 
 
 // Prototipos de funcoes
@@ -19,9 +23,13 @@ void trataSigalrm(int signum);
 
 void trataSigchld(int signum);
 
+void comandoCd(char *arg);
+
 void comandoWait();
 
 void comandoExit();
+
+void comandoExterno(char **comando1, char **comando2, char *strComando2);
 
 
 
@@ -64,22 +72,71 @@ int main() {
 
 
     // Loop de funcionamento da lazy shell
-    char buff[MAX_LINHA], buffComandos[MAX_BUFFER][MAX_LINHA];
+    char buff[MAX_LINHA];
+    char buffComandos[MAX_BUFFER][MAX_LINHA];
+    
     while (1) {
         // Assinatura da lazy shell
         printf("%s", linhaLsh);
 
-
         // Tenta ler da entrada
-        if (fgets(buff, MAX_LINHA, stdin) != NULL)
-            if ((tamBuffer < MAX_BUFFER) &&
-                (sscanf(buff, " %[^\n]", buffComandos[tamBuffer]) == 1))
+        if(fgets(buff, MAX_LINHA, stdin) != NULL){ 
+            if ((tamBuffer < MAX_BUFFER) && sscanf(buff, " %[^\n]", buffComandos[tamBuffer]) == 1) {
+                // copia pro buffer de comandos
                 tamBuffer++;
+            }
+        }
 
 
         // Executa os comandos armazenados
         if (executar == 1) {
-            // trata buffer e executa
+            for (int i = 0; i < tamBuffer; i++) {
+                // Separação dos argumentos (e comandos, caso haja pipe)
+                char* strComando1 = buffComandos[i];
+                char* strComando2 = NULL; // NULL se não tiver pipe
+            
+                char* comando1[5] = {NULL, NULL, NULL, NULL, NULL}; // executavel + até 3 args + NULL
+                char* comando2[5] = {NULL, NULL, NULL, NULL, NULL}; // executavel + até 3 args + NULL
+                
+                // procurar pipe
+                char *posPipe = strchr(buffComandos[i], '#');
+                if (posPipe != NULL) {
+                    *posPipe = '\0';        // insere \0 no strComando1
+                    strComando2 = posPipe + 1;  // posicao inicio do segundo comando
+                }
+
+                // separa por espaços para preencher o vetor comando1
+                int qtdComando1 = 0;
+                char* token = strtok(strComando1, WHITESPACES); 
+                while (token != NULL && qtdComando1 < 5) {  //falta notificar caso ultrapasse numero de argumentos?
+                    comando1[qtdComando1++] = token;
+                    token = strtok(NULL, WHITESPACES); 
+                }
+                
+                // separa por espaços para preencher o vetor comando2
+                if (strComando2 != NULL) {
+                    int qtdComando2 = 0;
+                    
+                    token = strtok(strComando2, WHITESPACES); 
+                    while (token != NULL && qtdComando2 < 5) {  //falta notificar caso ultrapasse numero de argumentos?
+                        comando2[qtdComando2++] = token;
+                        token = strtok(NULL, WHITESPACES);
+                    }
+                }
+
+                if (strcmp(comando1[0], "cd") == 0){
+                    comandoCd(comando1[1]);
+
+                } else if (strcmp(comando1[0], "wait") == 0){
+                    comandoWait();
+
+                } else if (strcmp(comando1[0], "exit") == 0){
+                    comandoExit(vetPgid);
+
+                } else {
+                    comandoExterno(comando1, comando2, strComando2);
+                }
+            }
 
             resistir = 1; // Primeiro, para SIGINT nao ativar o encerramento
             tamBuffer = 0; // Segundo, para SIGINT nao reativar a execucao
@@ -155,6 +212,15 @@ void trataSigalrm(int signum) {
     resistir = 1;
 }
 
+void comandoCd(char *arg){
+    char *caminho = {".."};
+    if (arg != NULL) caminho = arg;
+
+    if (chdir(caminho) == -1){
+        printf("DEBUG: tratar o errno?\n");
+    }
+}
+
 void comandoWait() {
     int pid, wstatus, numWait=0;
 
@@ -211,4 +277,101 @@ void comandoExit() {
             break;
 
     exit(EXIT_SUCCESS); // Deveria ser em outro lugar?
+}
+
+void comandoExterno(char **comando1, char **comando2, char *strComando2){
+    // Função de DEBUG para listar/imprimir os argumentos separadamente
+    // for (int i=0; i<5; i++) printf("arg %d: '%s'\n", i, comando1[i]);
+    // for (int i=0; i<5; i++) printf("arg %d: '%s'\n", i, comando2[i]);
+
+    // Se o elemento de índice 4 foi alterado de NULL, significa que excedeu o limite de argumentos
+    if ((comando1[4] != (char *) NULL) || (comando2[4] != (char *) NULL)){
+        printf("\tERRO: Comando com mais de 3 argumentos.\n");
+        return;
+    }
+
+    // Variável/Flag pra facilitar o uso de pipe
+    int temPipe = 0;
+
+    int fd[2];
+    if (strComando2 != NULL){
+        temPipe = 1;
+
+        int ret = pipe(fd);
+        if (ret == -1){
+            printf("Erro ao criar pipe.\n");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    int pid = fork();
+
+    if (pid < 0){
+        printf("Erro ao fazer fork.\n");
+        exit(EXIT_FAILURE);
+    } else if (pid > 0) {
+        // Código do pai, mudará o GPID do filho e criará um pipe
+        // para o segundo filho, se necessário
+
+        numFilhosVivos++;
+
+        if (PGIDfilhos == -1) PGIDfilhos = pid;
+
+        setpgid(pid, PGIDfilhos);
+
+        if (temPipe){
+            int pid2 = fork();
+
+            if (pid2 < 0){
+                printf("Erro ao fazer fork.\n");
+                exit(EXIT_FAILURE);
+            } else if (pid2 > 0) {
+                // Código do pai, mudará o GPID do segundo filho
+
+                numFilhosVivos++;
+
+                setpgid(pid2, PGIDfilhos);
+
+                // Fecha os descritores do pipe no pai
+                close(fd[0]);
+                close(fd[1]);
+
+            } else {
+                // Código do segundo filho, trata
+                // o pipe e chama o exec
+
+                // Fecha o descritor de escrita, já que esse filho apenas lê
+                close(fd[1]);
+
+                // Redireciona a entrada do filho para a saída do pipe
+                dup2(fd[0], 0);
+                close(fd[0]);
+
+                if (execvp(comando2[0], comando2) == -1){
+                    printf("\tErro no exec.\n");
+                    // Tem que tratar com o errno, e provavelmente tratar o primeiro filho
+
+                }
+            }
+        }
+    } else {
+        // Código do primeiro filho, aqui será tratado o
+        // pipe e então chamado o comando exec
+
+        if (temPipe){
+            // Fecha o descritor de leitura, já que esse filho apenas escreve
+            close(fd[0]);
+
+            // Redireciona a saída do filho para a entrada do pipe
+            dup2(fd[1], 1);
+            close(fd[1]);
+        }
+
+        if (execvp(comando1[0], comando1) == -1){
+            printf("\tErro no exec.\n");
+
+            printf("DEBUG: errno do exec=%d\n", errno);
+            // Tem que tratar com o errno, e provavelmente tratar o segundo filho (se tiver)
+        }
+    }
 }
