@@ -331,10 +331,6 @@ void comandoExterno(char **comando1, char **comando2, char *strComando2){
         // Código do pai, mudará o GPID do filho e criará um pipe
         // para o segundo filho, se necessário
 
-        if (PGIDfilhos == -1) PGIDfilhos = pid;
-
-        setpgid(pid, PGIDfilhos);
-
         if (temPipe){
             int pid2 = fork();
 
@@ -343,8 +339,6 @@ void comandoExterno(char **comando1, char **comando2, char *strComando2){
                 exit(EXIT_FAILURE);
             } else if (pid2 > 0) {
                 // Código do pai, mudará o GPID do segundo filho
-
-                setpgid(pid2, PGIDfilhos);
 
                 // Fecha os descritores do pipe no pai
                 close(fd[0]);
