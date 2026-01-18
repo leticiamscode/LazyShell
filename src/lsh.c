@@ -162,13 +162,10 @@ void comandoExternoUnico(char **comando1){
     int pid = fork();
     
     if (pid < 0){
-        printf("Erro ao fazer fork.\n");
+        perror("Erro ao fazer fork");
         exit(EXIT_FAILURE);
-    } else if (pid > 0) {
-        // Pai (lsh)
-    } else {
-        // Código do primeiro filho, aqui será tratado o
-        // pipe e então chamado o comando exec
+    } else if (pid == 0) {
+        // Código do filho, que chamará exec() para o comando
 
         // Muda o próprio PGID para o PGIDatual desse grupo de execução,
         // definido pelo processo representante criado antes do loop
@@ -176,7 +173,7 @@ void comandoExternoUnico(char **comando1){
 
         if (execvp(comando1[0], comando1) == -1){
             perror("Erro ao executar exec");
-            // Tem que tratar com o errno, e provavelmente tratar o segundo filho (se tiver)
+            exit(EXIT_FAILURE);
         }
     }
 }
@@ -184,24 +181,25 @@ void comandoExternoUnico(char **comando1){
 
 
 void comandoExternoPipe(char **comando1, char **comando2){
-    int pidCriador = fork();
+    int pidGerente = fork();
 
-    if (pidCriador < 0){
-        printf("Erro ao fazer fork.\n");
+    if (pidGerente < 0){
+        perror("Erro ao fazer fork");
         exit(EXIT_FAILURE);
-    } else if (pidCriador > 0){
-        // Pai (lsh)
-    } else {
-        // Filho "criador", que irá criar os execs
+    } else if (pidGerente == 0){
+        // Filho "gerente/criador", que criará 2 filhos que farão o exec
 
         // Muda o próprio PGID para o PGIDatual desse grupo de execução,
-        // definido pelo processo representante criado antes do loop
+        // definido pelo processo representante criado antes do loop.
+        // Esse PGID será herdado pelos filhos, por este motivo eles não
+        // precisarão atualizar seus PGIDs manualmente após serem criados.
         setpgid(0, PGIDatual);
         
         // Se o elemento de índice 4 foi alterado de NULL, significa que excedeu o limite de argumentos
         if ((comando1[4] != (char *) NULL) || (comando2[4] != (char *) NULL)){
             printf("ERRO: Comando com mais de 3 argumentos.\n");
             exit(EXIT_FAILURE);
+        // Se o segundo comando do pipe for algum dos internos (cd/wait/exit), não continua a operação
         } else if ((strcmp(comando2[0], "cd") == 0) || (strcmp(comando2[0], "wait") == 0) || (strcmp(comando2[0], "exit") == 0)){
             printf("ERRO: Segundo comando não pode ser comando interno.\n");
             exit(EXIT_FAILURE);
@@ -216,22 +214,25 @@ void comandoExternoPipe(char **comando1, char **comando2){
         }
 
         int pid1 = fork();
-
         if (pid1 < 0){
             perror("Erro ao fazer fork do primeiro comando");
             exit(EXIT_FAILURE);
         } else if (pid1 > 0) {
-            // Código do pai, criará um pipe para o segundo filho
+            // Código do gerente, ainda falta criar o segundo filho
+
 
             int pid2 = fork();
-
             if (pid2 < 0){
+                // Em caso de erro ao criar o segundo filho, como o primeiro
+                // já havia sido criado, é necessário matar ele manualmente
                 perror("Erro ao fazer fork do segundo comando");
+                kill(pid1, SIGKILL);
                 exit(EXIT_FAILURE);
             } else if (pid2 > 0) {
-                // Código do pai, mudará o GPID do segundo filho
+                // Código do gerente, mudará o GPID do segundo filho
 
-                // Fecha os descritores do pipe no pai
+
+                // Fecha os descritores do pipe no gerente
                 close(fd[0]);
                 close(fd[1]);
 
@@ -239,19 +240,19 @@ void comandoExternoPipe(char **comando1, char **comando2){
                 waitpid(-1, &wstatus, WUNTRACED);
 
                 if (WIFEXITED(wstatus)){
+                    // Caso algum dos dois filhos tenha problemas ao chamar exec,
+                    // o gerente matará os dois filhos para impedir um "pipe avulso"
                     if (WEXITSTATUS(wstatus) == EXIT_FAILURE){
                         kill(pid1, SIGKILL);
                         kill(pid2, SIGKILL);
-
-                        // printf("DEBUG: Recebeu erro, matando filhos\n");
-                        // Tem chance de algum exec retornar EXIT_SUCCESS antes do outro dar erro?
                     }
                 }
 
+                // Finaliza o gerente
                 exit(EXIT_SUCCESS);
             } else {
-                // Código do segundo filho, trata
-                // o pipe e chama o exec
+                // Código do segundo filho/comando do pipe, seta o pipe e chama exec
+
 
                 // Fecha o descritor de escrita, já que esse filho apenas lê
                 close(fd[1]);
@@ -260,16 +261,16 @@ void comandoExternoPipe(char **comando1, char **comando2){
                 dup2(fd[0], 0);
                 close(fd[0]);
 
+                // Em caso de erro no exec, o sinal de exit indicará ao pai/gerente
+                // que ambos os filhos devem morrer para evitar problemas com pipe
                 if (execvp(comando2[0], comando2) == -1){
                     perror("Erro ao fazer exec do segundo comando");
                     exit(EXIT_FAILURE);
-                    // Tem que tratar com o errno, e provavelmente tratar o primeiro filho
-
                 }
             }
         } else {
-            // Código do primeiro filho, aqui será tratado o
-            // pipe e então chamado o comando exec
+            // Código do segundo filho/comando do pipe, seta o pipe e chama exec
+
             
             // Fecha o descritor de leitura, já que esse filho apenas escreve
             close(fd[0]);
@@ -278,10 +279,11 @@ void comandoExternoPipe(char **comando1, char **comando2){
             dup2(fd[1], 1);
             close(fd[1]);
 
+            // Em caso de erro no exec, o sinal de exit indicará ao pai/gerente
+            // que ambos os filhos devem morrer para evitar problemas com pipe
             if (execvp(comando1[0], comando1) == -1){
                 perror("Erro ao fazer exec do primeiro comando");
                 exit(EXIT_FAILURE);
-                // Tem que tratar com o errno, e provavelmente tratar o segundo filho (se tiver)
             }
         }
     }
