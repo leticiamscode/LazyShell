@@ -66,6 +66,9 @@ int main() {
         // Executa os comandos armazenados
         if (executar == 1) {
             for (int i = 0; i < tamBuffer; i++) {
+                // Cancela qualquer alarme, que poderia interromper a execução dos filhos
+                alarm(0);
+
                 // Separação dos argumentos (e comandos, caso haja pipe)
                 char* strComando1 = buffComandos[i];
                 char* strComando2 = NULL; // NULL se não tiver pipe
@@ -100,13 +103,25 @@ int main() {
                 }
 
                 if (strcmp(comando1[0], "cd") == 0){
-                    comandoCd(comando1[1]);
+                    if (comando1[2] != NULL){ // Mais de 1 argumento, cd inválido
+                        printf("Erro no cd: espera-se apenas 1 argumento\n");
+                    } else { // 1 argumento ou menos, aceitável para o chdir()
+                        comandoCd(comando1[1]);
+                    }
 
                 } else if (strcmp(comando1[0], "wait") == 0){
-                    comandoWait();
+                    if (comando1[1] != NULL){ // Possui argumento, wait inválido
+                        printf("Erro no wait: não deve receber nenhum argumento\n");
+                    } else { // Nenhum argumento, aceitável para o comando wait
+                        comandoWait();
+                    }
 
                 } else if (strcmp(comando1[0], "exit") == 0){
-                    comandoExit();
+                    if (comando1[1] != NULL){ // Possui argumento, exit inválido
+                        printf("Erro no exit: não deve receber nenhum argumento\n");
+                    } else { // Nenhum argumento, aceitável para o comando exit
+                        comandoExit();
+                    }
 
                 } else {
                     // Quando strComando2 possui valor, significa existência de pipe/segundo comando
@@ -116,6 +131,9 @@ int main() {
                         comandoExternoUnico(comando1);
                     }
                 }
+
+                // Delay de 0.1s para garantir a ordem esperada dos comandos executados
+                usleep(100000);
             }
 
             resistir = 1; // Primeiro, para SIGINT nao ativar o encerramento
