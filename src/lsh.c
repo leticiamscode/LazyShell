@@ -141,6 +141,8 @@ void comandoExit() {
     exit(EXIT_SUCCESS); 
 }
 
+// COMANDOS EXTERNOS
+
 void comandoExternoUnico(char **comando1){
 
     // Se o elemento de índice 4 foi alterado de NULL, significa que excedeu o limite de argumentos
@@ -175,7 +177,7 @@ void comandoExternoUnico(char **comando1){
     }
 }
 
-// COMANDOS EXTERNOS
+
 
 void comandoExternoPipe(char **comando1, char **comando2){
     int pidCriador = fork();
