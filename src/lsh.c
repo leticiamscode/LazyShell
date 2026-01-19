@@ -1,0 +1,290 @@
+/**
+ * @file lsh.c
+ * @author Rafael Vieira / Igor Bittencourt / Leticia Mariana
+ * @brief Implementação das funções auxiliares da LSH.
+ * @copyright Copyright (c) 2026
+ * 
+ */
+
+#include "lsh.h"
+
+// TRATADORES DE SINAIS
+
+void trataSigint(int signum) {
+    printf("\n"); // Para separar a saida do comando ^C
+
+    // Verificacao da existencia de comandos a executar
+    if (tamBuffer > 0) {
+        executar = 1;
+    }
+    else { // So pode ser 0
+        // Verificacao da existencia de filhos vivos
+        int pid = fork();
+        if (pid == -1) {     // NAO HOUVE FORK
+            perror("Falha ao procurar processos filhos (fork)");
+            exit(EXIT_FAILURE);
+        }
+        else if (pid == 0) { // PROCESSO FILHO
+            // Criacao de pipe interno para evitar saida no terminal
+            int fd[2];
+            if (pipe(fd) == -1) {
+                perror("Falha ao procurar processos filhos (pipe)");
+                exit(EXIT_FAILURE);
+            }
+            if ((dup2(fd[0], 0) == -1) || (dup2(fd[1], 1) == -1)) {
+                perror("Falha ao procurar processos filhos (dup)");
+                exit(EXIT_FAILURE);
+            }
+            close(fd[0]);
+            close(fd[1]);
+            
+            // Execucao de pgrep para encontrar filhos vivos da lsh
+            if (execlp("pgrep", "pgrep", "-P", pidLsh, "-r", "R,S,D,T", NULL) == -1) {
+                perror("Falha ao procurar processos filhos (exec)");
+                exit(EXIT_FAILURE);
+            }
+        }
+                            // PROCESSO PAI
+        int status;
+        if (waitpid(pid, &status, 0) == -1) {
+            perror("Falha ao procurar processos filhos (wait)");
+            exit(EXIT_FAILURE);
+        }
+        if (!WIFEXITED(status)) {
+            perror("Falha ao procurar processos filhos (signal)");
+            exit(EXIT_FAILURE);
+        }
+
+        // Existem filhos vivos e a lsh pode resistir
+        if ((WEXITSTATUS(status) == 0) && (resistir == 1)) {
+            printf("%sNão posso morrer... sou lenta mas sou mãe de família!!!\n", linhaLsh);
+            resistir = 0;
+            alarm(3);
+        }
+        else {
+            printf("%sOk... você venceu! Adeus!\n", linhaLsh);
+            exit(EXIT_SUCCESS);
+        }
+    }
+}
+
+void trataSigalrm(int signum) {
+    printf("\n"); // Para separar a proxima linhaLsh
+    resistir = 1;
+}
+
+void trataSigterm(int signum) {
+    if (kill(0, SIGTERM) == -1) {
+        perror("Falha ao matar grupo de processos");
+        exit(EXIT_FAILURE);
+    }
+
+    // Liberando todos os processos filhos
+    while ((wait(NULL) != -1) || (errno != ECHILD));
+
+    exit(EXIT_SUCCESS);
+}
+
+// COMANDOS INTERNOS
+
+void comandoCd(char *arg){
+    if (chdir(arg) == -1){
+        perror("Erro ao executar cd");
+    }
+}
+
+void comandoWait() {
+    int pid, wstatus, numWait=0;
+
+    while ((pid = waitpid(-1, &wstatus, WNOHANG)) > 0) {
+        if (WIFEXITED(wstatus))
+            printf("O processo %d terminou com retorno %d.\n", pid, WEXITSTATUS(wstatus));
+        else if (WIFSIGNALED(wstatus))
+            printf("O processo %d foi terminado pelo sinal %d.\n", pid, WTERMSIG(wstatus));
+
+        numWait++;
+    }
+
+    if (numWait == 0)
+        printf("Nao ha processos filhos a liberar.\n");
+}
+
+void comandoExit() {
+    // Matando os processos vivos que restam
+    int pid = fork();
+    if (pid == -1) {     // NAO HOUVE FORK
+        perror("Falha ao matar processos filhos (fork)");
+        exit(EXIT_FAILURE);
+    }
+    else if (pid == 0) { // PROCESSO FILHO
+        // Criacao de pipe interno para evitar saida no terminal
+        int fd[2];
+        if (pipe(fd) == -1) {
+            perror("Falha ao matar processos filhos (pipe)");
+            exit(EXIT_FAILURE);
+        }
+        if ((dup2(fd[0], 0) == -1) || (dup2(fd[1], 1) == -1)) {
+            perror("Falha ao matar processos filhos (dup)");
+            exit(EXIT_FAILURE);
+        }
+        close(fd[0]);
+        close(fd[1]);
+        
+        // Execucao de pkill para matar filhos vivos da lsh
+        // Os filhos que receberem o sinal (SIGTERM) matarao seus filhos, se houver
+        if (execlp("pkill", "pkill", "-P", pidLsh, NULL) == -1) {
+            perror("Falha ao matar processos filhos (exec)");
+            exit(EXIT_FAILURE);
+        }
+    }
+                        // PROCESSO PAI
+    if (waitpid(pid, NULL, 0) == -1) {
+        perror("Falha ao matar processos filhos (wait)");
+        exit(EXIT_FAILURE);
+    }
+
+    // Liberando todos os processos filhos
+    while ((wait(NULL) != -1) || (errno != ECHILD));
+
+    exit(EXIT_SUCCESS); 
+}
+
+// COMANDOS EXTERNOS
+
+void comandoExternoUnico(char **comando1){
+
+    // Se o elemento de índice 4 foi alterado de NULL, significa que excedeu o limite de argumentos
+    if (comando1[4] != (char *) NULL){
+        printf("ERRO: Comando com mais de 3 argumentos.\n");
+        return;
+    }
+
+    int pid = fork();
+    
+    if (pid < 0){
+        perror("Erro ao fazer fork");
+        exit(EXIT_FAILURE);
+    } else if (pid == 0) {
+        // Código do filho, que chamará exec() para o comando
+
+        // Muda o próprio PGID para o PGIDatual desse grupo de execução,
+        // definido pelo processo representante criado antes do loop
+        setpgid(0, PGIDatual);
+
+        if (execvp(comando1[0], comando1) == -1){
+            perror("Erro ao executar exec");
+            exit(EXIT_FAILURE);
+        }
+    }
+}
+
+
+
+void comandoExternoPipe(char **comando1, char **comando2){
+    int pidGerente = fork();
+
+    if (pidGerente < 0){
+        perror("Erro ao fazer fork");
+        exit(EXIT_FAILURE);
+    } else if (pidGerente == 0){
+        // Filho "gerente/criador", que criará 2 filhos que farão o exec
+
+        // Muda o próprio PGID para o PGIDatual desse grupo de execução,
+        // definido pelo processo representante criado antes do loop.
+        // Esse PGID será herdado pelos filhos, por este motivo eles não
+        // precisarão atualizar seus PGIDs manualmente após serem criados.
+        setpgid(0, PGIDatual);
+        
+        // Se o elemento de índice 4 foi alterado de NULL, significa que excedeu o limite de argumentos
+        if ((comando1[4] != (char *) NULL) || (comando2[4] != (char *) NULL)){
+            printf("ERRO: Comando com mais de 3 argumentos.\n");
+            exit(EXIT_FAILURE);
+        // Se o segundo comando do pipe for algum dos internos (cd/wait/exit), não continua a operação
+        } else if ((strcmp(comando2[0], "cd") == 0) || (strcmp(comando2[0], "wait") == 0) || (strcmp(comando2[0], "exit") == 0)){
+            printf("ERRO: Segundo comando não pode ser comando interno.\n");
+            exit(EXIT_FAILURE);
+        }
+
+        int fd[2];
+
+        int ret = pipe(fd);
+        if (ret == -1){
+            perror("Erro ao criar pipe");
+            exit(EXIT_FAILURE);
+        }
+
+        int pid1 = fork();
+        if (pid1 < 0){
+            perror("Erro ao fazer fork do primeiro comando");
+            exit(EXIT_FAILURE);
+        } else if (pid1 > 0) {
+            // Código do gerente, ainda falta criar o segundo filho
+
+
+            int pid2 = fork();
+            if (pid2 < 0){
+                // Em caso de erro ao criar o segundo filho, como o primeiro
+                // já havia sido criado, é necessário matar ele manualmente
+                perror("Erro ao fazer fork do segundo comando");
+                kill(pid1, SIGKILL);
+                exit(EXIT_FAILURE);
+            } else if (pid2 > 0) {
+                // Código do gerente, mudará o GPID do segundo filho
+
+
+                // Fecha os descritores do pipe no gerente
+                close(fd[0]);
+                close(fd[1]);
+
+                int wstatus;
+                waitpid(-1, &wstatus, WUNTRACED);
+
+                if (WIFEXITED(wstatus)){
+                    // Caso algum dos dois filhos tenha problemas ao chamar exec,
+                    // o gerente matará os dois filhos para impedir um "pipe avulso"
+                    if (WEXITSTATUS(wstatus) == EXIT_FAILURE){
+                        kill(pid1, SIGKILL);
+                        kill(pid2, SIGKILL);
+                    }
+                }
+
+                // Finaliza o gerente
+                exit(EXIT_SUCCESS);
+            } else {
+                // Código do segundo filho/comando do pipe, seta o pipe e chama exec
+
+
+                // Fecha o descritor de escrita, já que esse filho apenas lê
+                close(fd[1]);
+
+                // Redireciona a entrada do filho para a saída do pipe
+                dup2(fd[0], 0);
+                close(fd[0]);
+
+                // Em caso de erro no exec, o sinal de exit indicará ao pai/gerente
+                // que ambos os filhos devem morrer para evitar problemas com pipe
+                if (execvp(comando2[0], comando2) == -1){
+                    perror("Erro ao fazer exec do segundo comando");
+                    exit(EXIT_FAILURE);
+                }
+            }
+        } else {
+            // Código do segundo filho/comando do pipe, seta o pipe e chama exec
+
+            
+            // Fecha o descritor de leitura, já que esse filho apenas escreve
+            close(fd[0]);
+
+            // Redireciona a saída do filho para a entrada do pipe
+            dup2(fd[1], 1);
+            close(fd[1]);
+
+            // Em caso de erro no exec, o sinal de exit indicará ao pai/gerente
+            // que ambos os filhos devem morrer para evitar problemas com pipe
+            if (execvp(comando1[0], comando1) == -1){
+                perror("Erro ao fazer exec do primeiro comando");
+                exit(EXIT_FAILURE);
+            }
+        }
+    }
+}
