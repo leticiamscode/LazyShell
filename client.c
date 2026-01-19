@@ -95,6 +95,113 @@ int main() {
             }
         }
 
+        char buffComando1[MAX_ARGS+1][MAX_BUFFER];
+        for (int i=0; i < tamBuffer; i++) {
+            int numArgs1 = 0, quebrar = 0;
+            for (int j=0; numArgs1 <= MAX_ARGS; numArgs1++) {
+                // Pula whitespaces extras ateh um caractere valido
+                while ((buffComandos[i][j] == '\t') ||
+                    (buffComandos[i][j] == ' '))
+                    j++;
+
+                // Achou indicador de pipe
+                if (buffComandos[i][j] == '#') {
+                    // numPipes++;
+                    numArgs1--;
+                    break;
+                }
+
+                while (1) {
+                    // Finaliza o argumento se encontra um whitespace nao demarcado
+                    if ((buffComandos[i][j] == '\t') ||
+                        (buffComandos[i][j] == ' '))
+                        break;
+
+                    // Copia o proximo caractere sem verificar
+                    // se encontra uma contrabarra
+                    if (buffComandos[i][j] == '\\') {
+                        buffComando1[i][j] = buffComandos[i][j+1];
+                        j++;
+                    }
+                    // Inicia uma copia sem verificacoes ateh
+                    // encontrar uma aspa correspondente, nao demarcada
+                    else if (buffComandos[i][j] == '\'') {
+                        while (1) {
+                            // Copia o proximo caractere sem verificar
+                            // se encontra um contrabarra
+                            if (buffComandos[i][j+1] == '\\') {
+                                buffComando1[i][j] = buffComandos[i][j+2];
+                                j++;
+                            }
+                            // Encontrou par, encerra varredura
+                            else if (buffComandos[i][j+1] == '\'') {
+                                j++;
+                                break;
+                            }
+                            // Caracteres em geral
+                            else
+                                buffComando1[i][j] = buffComandos[i][j+1];
+
+                            // String terminou prematuramente
+                            // Quebra por dentro e propaga o procedimento
+                            if (buffComandos[i][j+1] == '\0') {
+                                quebrar = 1;
+                                break;
+                            }
+
+                            j++;
+                        }
+                    }
+                    else if (buffComandos[i][j] == '\"') {
+                        while (1) {
+                            // Copia o proximo caractere sem verificar
+                            // se encontra um contrabarra
+                            if (buffComandos[i][j+1] == '\\') {
+                                buffComando1[i][j] = buffComandos[i][j+2];
+                                j++;
+                            }
+                            // Encontrou par, encerra varredura
+                            else if (buffComandos[i][j+1] == '\'') {
+                                j++;
+                                break;
+                            }
+                            // Caracteres em geral
+                            else
+                                buffComando1[i][j] = buffComandos[i][j+1];
+
+                            // String terminou prematuramente
+                            // Quebra por dentro e propaga o procedimento
+                            if (buffComandos[i][j+1] == '\0') {
+                                quebrar = 1;
+                                break;
+                            }
+
+                            j++;
+                        }
+                    }
+                    // Caracteres em geral
+                    else
+                        buffComando1[i][j] = buffComandos[i][j];
+
+                    // Sempre deve verificar se a string acabou,
+                    // pois a posicao pode ter sido movida
+                    if (buffComandos[i][j] == '\0') {
+                        quebrar = 1;
+                        break;
+                    }
+
+                    // Propaga a quebra se ocorreu internamente
+                    if (quebrar == 1)
+                        break;
+
+                    j++;
+                }
+
+                // Encerra o comando se foi sinalizado
+                if (quebrar == 1)
+                    break;
+            }
+        }
 
         // Executa os comandos armazenados
         if (executar == 1) {
