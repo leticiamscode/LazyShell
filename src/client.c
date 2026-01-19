@@ -17,7 +17,7 @@ int PGIDatual = -1; // Armazena o ID do grupo atual de execução
 
 int main() {
     // Salva o PID em uma string, para uso eventual
-    if (snprintf(pidLsh, 11, "%d", getpid()) < 0) {
+    if (sprintf(pidLsh, "%d", getpid()) < 0) {
         perror("Falha ao imprimir PID");
         exit(EXIT_FAILURE);
     }
@@ -63,9 +63,10 @@ int main() {
         printf("%s", linhaLsh);
 
         // Leitura de comandos
-        if(fgets(buff, MAX_LINHA, stdin) != NULL){ 
-            if ((tamBuffer < MAX_BUFFER) && sscanf(buff, " %[^\n]", buffComandos[tamBuffer]) == 1) {
-                // Copia pro buffer de comandos
+        if(fgets(buff, MAX_LINHA, stdin) != NULL) {
+            // Copia entrada lida pro buffer de comandos, se puder
+            if ((tamBuffer < MAX_BUFFER) &&
+                sscanf(buff, " %[^\n]", buffComandos[tamBuffer]) == 1) {
                 tamBuffer++;
             }
         }
@@ -73,6 +74,9 @@ int main() {
 
         // Executa os comandos armazenados
         if (executar == 1) {
+            // Cancela qualquer alarme, que poderia interromper a execução dos comandos
+            alarm(0);
+
             // Para cada "grupo de comandos" do buffer, é criado antecipadamente um processo "representante",
             // que servirá como mantenedor do Process Group desses comandos, provendo o PGID a ser usado por eles
             int pidRepresentanteGrupo = fork();
@@ -81,7 +85,7 @@ int main() {
                 perror("Falha ao criar representante pra execução do buffer (fork)");
                 exit(EXIT_FAILURE);
             } else if (pidRepresentanteGrupo == 0){
-                // Representante do grupo, cria o PGID e deve permanecer vivo  até todos
+                // Representante do grupo, cria o PGID e deve permanecer vivo até todos
                 // os comandos serem iniciados, então eles mesmos manterão o grupo
 
                 // Cria o grupo (PGID) a partir de seu próprio PID
@@ -100,9 +104,6 @@ int main() {
             }
 
             for (int i = 0; i < tamBuffer; i++) {
-                // Cancela qualquer alarme, que poderia interromper a execução dos filhos
-                alarm(0);
-
                 // Separação dos argumentos (e comandos, caso haja pipe)
                 char* strComando1 = buffComandos[i];
                 char* strComando2 = NULL; // NULL se não tiver pipe
@@ -179,7 +180,7 @@ int main() {
                 usleep(100000);
             }
 
-            resistir = 1; // Primeiro, para SIGINT nao ativar o encerramento
+            resistir = 1; // Primeiro, para SIGINT nao encerrar a lsh
             tamBuffer = 0; // Segundo, para SIGINT nao reativar a execucao
             executar = 0;  // Desativa a flag de execução
 

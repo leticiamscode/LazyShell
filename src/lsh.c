@@ -39,7 +39,7 @@ void trataSigint(int signum) {
             close(fd[1]);
             
             // Execucao de pgrep para encontrar filhos vivos da lsh
-            if (execlp("pgrep", "pgrep", "-P", pidLsh, "-r", "R,S,D,T", NULL) == -1) {
+            if (execlp("pgrep", "pgrep", "-P", pidLsh, "-r", "D,I,S,R,T,t", NULL) == -1) {
                 perror("Falha ao procurar processos filhos (exec)");
                 exit(EXIT_FAILURE);
             }
@@ -131,7 +131,8 @@ void comandoExit() {
         close(fd[1]);
         
         // Execucao de pkill para matar filhos vivos da lsh
-        // Os filhos que receberem o sinal (SIGTERM) matarao seus filhos, se houver
+        // Os filhos intermediarios que receberem o sinal (SIGTERM)
+        // o propagarao para seus grupos, o que inclui herdeiros indiretos
         if (execlp("pkill", "pkill", "-P", pidLsh, NULL) == -1) {
             perror("Falha ao matar processos filhos (exec)");
             exit(EXIT_FAILURE);
