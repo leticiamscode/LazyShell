@@ -42,7 +42,7 @@ void comandoWait();
 void comandoExit();
 
 // Comandos Externos
-void comandoExternoUnico(char **comando1);
-void comandoExternoPipe(char **comando1, char **comando2);
+void comandoExternoUnico(char **comando1, struct sigaction saIgnoreSigint);
+void comandoExternoPipe(char **comando1, char **comando2, struct sigaction saIgnoreSigint);
 
 #endif // LSH_H

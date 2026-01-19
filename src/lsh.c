@@ -151,7 +151,7 @@ void comandoExit() {
 
 // COMANDOS EXTERNOS
 
-void comandoExternoUnico(char **comando1){
+void comandoExternoUnico(char **comando1, struct sigaction saIgnoreSigint){
 
     // Se o elemento de índice 4 foi alterado de NULL, significa que excedeu o limite de argumentos
     if (comando1[4] != (char *) NULL){
@@ -167,6 +167,11 @@ void comandoExternoUnico(char **comando1){
     } else if (pid == 0) {
         // Código do filho, que chamará exec() para o comando
 
+        // Seta tratador do processo filho para ignorar SIGINT, como dito na especificação
+        if (sigaction(SIGINT, &saIgnoreSigint, NULL) == -1){
+            perror("Falha ao instalar tratador de SIGINT para processo filho");
+        }
+
         // Muda o próprio PGID para o PGIDatual desse grupo de execução,
         // definido pelo processo representante criado antes do loop
         setpgid(0, PGIDatual);
@@ -180,7 +185,7 @@ void comandoExternoUnico(char **comando1){
 
 
 
-void comandoExternoPipe(char **comando1, char **comando2){
+void comandoExternoPipe(char **comando1, char **comando2, struct sigaction saIgnoreSigint){
     int pidGerente = fork();
 
     if (pidGerente < 0){
@@ -188,6 +193,12 @@ void comandoExternoPipe(char **comando1, char **comando2){
         exit(EXIT_FAILURE);
     } else if (pidGerente == 0){
         // Filho "gerente/criador", que criará 2 filhos que farão o exec
+
+        // Seta tratador do processo gerente para ignorar SIGINT,
+        // que será herdado pelos filhos, como dito na especificação
+        if (sigaction(SIGINT, &saIgnoreSigint, NULL) == -1){
+            perror("Falha ao instalar tratador de SIGINT para processo filho");
+        }
 
         // Muda o próprio PGID para o PGIDatual desse grupo de execução,
         // definido pelo processo representante criado antes do loop.
