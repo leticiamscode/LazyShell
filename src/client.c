@@ -52,7 +52,14 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-
+    // Configura tratador para SIGINT que será utilizado nos
+    // processos filhos, que devem ignorar o sinal
+    struct sigaction saIgnoreSigint;
+    saIgnoreSigint.sa_handler = SIG_IGN;
+    saIgnoreSigint.sa_flags = 0;
+    if ((sigemptyset(&saIgnoreSigint.sa_mask) == -1)){
+        perror("Falha ao criar máscara de sinais para processos filhos");
+    }
 
     // Loop de funcionamento da lazy shell
     char buff[MAX_LINHA];
@@ -170,9 +177,9 @@ int main() {
 
                 } else {
                     if (temPipe) {
-                        comandoExternoPipe(comando1, comando2);
+                        comandoExternoPipe(comando1, comando2, saIgnoreSigint);
                     } else {
-                        comandoExternoUnico(comando1);
+                        comandoExternoUnico(comando1, saIgnoreSigint);
                     }
                 }
 

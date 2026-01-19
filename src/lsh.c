@@ -152,7 +152,7 @@ void comandoExit() {
 
 // COMANDOS EXTERNOS
 
-void comandoExternoUnico(char **comando1){
+void comandoExternoUnico(char **comando1, struct sigaction saIgnoreSigint){
 
     // Se o elemento de índice 4 foi alterado de NULL, significa que excedeu o limite de argumentos
     if (comando1[4] != (char *) NULL){
@@ -168,6 +168,11 @@ void comandoExternoUnico(char **comando1){
     } else if (pid == 0) {
         // Código do filho, que chamará exec() para o comando
 
+        // Seta tratador do processo filho para ignorar SIGINT, como dito na especificação
+        if (sigaction(SIGINT, &saIgnoreSigint, NULL) == -1){
+            perror("Falha ao instalar tratador de SIGINT para processo filho");
+        }
+
         // Muda o próprio PGID para o PGIDatual desse grupo de execução,
         // definido pelo processo representante criado antes do loop
         setpgid(0, PGIDatual);
@@ -181,7 +186,7 @@ void comandoExternoUnico(char **comando1){
 
 
 
-void comandoExternoPipe(char **comando1, char **comando2){
+void comandoExternoPipe(char **comando1, char **comando2, struct sigaction saIgnoreSigint){
     int pidGerente = fork();
 
     if (pidGerente < 0){
@@ -189,6 +194,12 @@ void comandoExternoPipe(char **comando1, char **comando2){
         exit(EXIT_FAILURE);
     } else if (pidGerente == 0){
         // Filho "gerente/criador", que criará 2 filhos que farão o exec
+
+        // Seta tratador do processo gerente para ignorar SIGINT,
+        // que será herdado pelos filhos, como dito na especificação
+        if (sigaction(SIGINT, &saIgnoreSigint, NULL) == -1){
+            perror("Falha ao instalar tratador de SIGINT para processo filho");
+        }
 
         // Muda o próprio PGID para o PGIDatual desse grupo de execução,
         // definido pelo processo representante criado antes do loop.
@@ -206,71 +217,22 @@ void comandoExternoPipe(char **comando1, char **comando2){
             exit(EXIT_FAILURE);
         }
 
-        int fd[2];
 
+        // Cria pipe para os filhos
+        int fd[2];
         int ret = pipe(fd);
         if (ret == -1){
             perror("Erro ao criar pipe");
             exit(EXIT_FAILURE);
         }
 
+        // Cria o primeiro filho
         int pid1 = fork();
         if (pid1 < 0){
             perror("Erro ao fazer fork do primeiro comando");
             exit(EXIT_FAILURE);
-        } else if (pid1 > 0) {
-            // Código do gerente, ainda falta criar o segundo filho
-
-
-            int pid2 = fork();
-            if (pid2 < 0){
-                // Em caso de erro ao criar o segundo filho, como o primeiro
-                // já havia sido criado, é necessário matar ele manualmente
-                perror("Erro ao fazer fork do segundo comando");
-                kill(pid1, SIGKILL);
-                exit(EXIT_FAILURE);
-            } else if (pid2 > 0) {
-                // Código do gerente, mudará o GPID do segundo filho
-
-
-                // Fecha os descritores do pipe no gerente
-                close(fd[0]);
-                close(fd[1]);
-
-                int wstatus;
-                waitpid(-1, &wstatus, WUNTRACED);
-
-                if (WIFEXITED(wstatus)){
-                    // Caso algum dos dois filhos tenha problemas ao chamar exec,
-                    // o gerente matará os dois filhos para impedir um "pipe avulso"
-                    if (WEXITSTATUS(wstatus) == EXIT_FAILURE){
-                        kill(pid1, SIGKILL);
-                        kill(pid2, SIGKILL);
-                    }
-                }
-
-                // Finaliza o gerente
-                exit(EXIT_SUCCESS);
-            } else {
-                // Código do segundo filho/comando do pipe, seta o pipe e chama exec
-
-
-                // Fecha o descritor de escrita, já que esse filho apenas lê
-                close(fd[1]);
-
-                // Redireciona a entrada do filho para a saída do pipe
-                dup2(fd[0], 0);
-                close(fd[0]);
-
-                // Em caso de erro no exec, o sinal de exit indicará ao pai/gerente
-                // que ambos os filhos devem morrer para evitar problemas com pipe
-                if (execvp(comando2[0], comando2) == -1){
-                    perror("Erro ao fazer exec do segundo comando");
-                    exit(EXIT_FAILURE);
-                }
-            }
-        } else {
-            // Código do segundo filho/comando do pipe, seta o pipe e chama exec
+        } else if (pid1 == 0) {
+            // Código do primeiro filho/comando do pipe, seta o pipe e chama exec
 
             
             // Fecha o descritor de leitura, já que esse filho apenas escreve
@@ -287,5 +249,54 @@ void comandoExternoPipe(char **comando1, char **comando2){
                 exit(EXIT_FAILURE);
             }
         }
+
+
+        // Cria o segundo filho
+        int pid2 = fork();
+        if (pid2 < 0){
+            // Em caso de erro ao criar o segundo filho, como o primeiro
+            // já havia sido criado, é necessário matar ele manualmente
+            perror("Erro ao fazer fork do segundo comando");
+            kill(pid1, SIGKILL);
+            exit(EXIT_FAILURE);
+        } else if (pid2 == 0) {
+            // Código do segundo filho/comando do pipe, seta o pipe e chama exec
+
+
+            // Fecha o descritor de escrita, já que esse filho apenas lê
+            close(fd[1]);
+
+            // Redireciona a entrada do filho para a saída do pipe
+            dup2(fd[0], 0);
+            close(fd[0]);
+
+            // Em caso de erro no exec, o sinal de exit indicará ao pai/gerente
+            // que ambos os filhos devem morrer para evitar problemas com pipe
+            if (execvp(comando2[0], comando2) == -1){
+                perror("Erro ao fazer exec do segundo comando");
+                exit(EXIT_FAILURE);
+            }
+        }
+
+
+
+        // Fecha os descritores do pipe no gerente
+        close(fd[0]);
+        close(fd[1]);
+
+        int wstatus;
+        waitpid(-1, &wstatus, WUNTRACED);
+
+        if (WIFEXITED(wstatus)){
+            // Caso algum dos dois filhos tenha problemas ao chamar exec,
+            // o gerente matará os dois filhos para impedir um "pipe desgovernado"
+            if (WEXITSTATUS(wstatus) == EXIT_FAILURE){
+                kill(pid1, SIGKILL);
+                kill(pid2, SIGKILL);
+            }
+        }
+
+        // Finaliza o gerente
+        exit(EXIT_SUCCESS);
     }
 }
