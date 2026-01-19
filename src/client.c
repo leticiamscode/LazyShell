@@ -56,7 +56,7 @@ int main() {
     // processos filhos, que devem ignorar o sinal
     struct sigaction saIgnoreSigint;
     saIgnoreSigint.sa_handler = SIG_IGN;
-    saIgnoreSigint.sa_flags = NULL;
+    saIgnoreSigint.sa_flags = 0;
     if ((sigemptyset(&saIgnoreSigint.sa_mask) == -1)){
         perror("Falha ao criar máscara de sinais para processos filhos");
     }
